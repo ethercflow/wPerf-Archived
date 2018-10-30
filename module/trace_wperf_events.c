@@ -26,9 +26,17 @@ on_try_to_wake_up_ent(struct task_struct *p, unsigned int state, int wake_flags)
 
 DECL_CMN_JRP(try_to_wake_up);
 
+static void on_tasklet_hi_action_ent(struct softirq_action *a)
+{
+    jprobe_return();
+}
+
+DECL_CMN_JRP(tasklet_hi_action);
+
 static struct jprobe *wperf_jprobes[] = {
     &__switch_to_jp,
     &try_to_wake_up_jp,
+    &tasklet_hi_action_jp,
 };
 
 static int __init trace_wperf_events_init(void)
