@@ -75,12 +75,20 @@ static void on_net_tx_action_ent(struct softirq_action *h)
 
 DECL_CMN_JRP(net_tx_action);
 
+static void on_net_rx_action_ent(struct softirq_action *a)
+{
+    jprobe_return();
+}
+
+DECL_CMN_JRP(net_rx_action);
+
 static struct jprobe *wperf_jprobes[] = {
     &__switch_to_jp,
     &try_to_wake_up_jp,
     &tasklet_hi_action_jp,
     &run_timer_softirq_jp,
     &net_tx_action_jp,
+    &net_rx_action_jp,
 };
 
 static int __init trace_wperf_events_init(void)
