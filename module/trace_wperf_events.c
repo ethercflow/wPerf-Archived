@@ -8,7 +8,7 @@
 
 #define DECL_CMN_JRP(fn) _DECL_CMN_JRP(fn, fn)
 
-__notrace_funcgraph struct task_struct *
+static __notrace_funcgraph struct task_struct *
 on___switch_to_ent(struct task_struct *prev_p, struct task_struct *next_p)
 {
     jprobe_return();
@@ -17,8 +17,18 @@ on___switch_to_ent(struct task_struct *prev_p, struct task_struct *next_p)
 
 DECL_CMN_JRP(__switch_to);
 
+static int
+on_try_to_wake_up_ent(struct task_struct *p, unsigned int state, int wake_flags)
+{
+    jprobe_return();
+    return 0;
+}
+
+DECL_CMN_JRP(try_to_wake_up);
+
 static struct jprobe *wperf_jprobes[] = {
     &__switch_to_jp,
+    &try_to_wake_up_jp,
 };
 
 static int __init trace_wperf_events_init(void)
