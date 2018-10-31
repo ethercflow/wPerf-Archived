@@ -1,5 +1,6 @@
 #include <linux/module.h>
 #include <linux/kprobes.h>
+#include <linux/interrupt.h>
 
 struct per_cpu_wperf_data {
     int softirqs_nr;
@@ -565,7 +566,7 @@ static int __init trace_wperf_events_init(void)
 static void __exit trace_wperf_events_exit(void)
 {
     unregister_jprobes(wperf_jps,
-                       sizeof(wperf_jpbs) / sizeof(wperf_jpbs[0]));
+                       sizeof(wperf_jps) / sizeof(wperf_jps[0]));
     unregister_kretprobes(wperf_krps,
                           sizeof(wperf_krps) / sizeof(wperf_krps[0]));
 }
