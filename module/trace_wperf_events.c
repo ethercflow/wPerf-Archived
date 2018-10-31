@@ -103,6 +103,7 @@ on_tasklet_hi_action_ent(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
     struct per_cpu_wperf_data *data;
 
+    data = &__get_cpu_var(wperf_cpu_data);
     data->softirqs_nr = HI_SOFTIRQ;
 
     return 0;
@@ -113,6 +114,7 @@ on_tasklet_hi_action_ret(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
     struct per_cpu_wperf_data *data;
 
+    data = &__get_cpu_var(wperf_cpu_data);
     data->softirqs_nr = NR_SOFTIRQS;
 
     return 0;
