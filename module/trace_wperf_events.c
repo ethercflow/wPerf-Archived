@@ -41,6 +41,8 @@ DECL_CMN_JRP(__switch_to);
  *
  * Return: %true if @p was woken up, %false if it was already running.
  * or @state didn't match @p's state.
+ *
+ * called by wake_up_process
  */
 static int
 on_try_to_wake_up_ent(struct task_struct *p, unsigned int state, int wake_flags)
@@ -51,6 +53,12 @@ on_try_to_wake_up_ent(struct task_struct *p, unsigned int state, int wake_flags)
 
 DECL_CMN_JRP(try_to_wake_up);
 
+/*
+ * Priority level: 0
+ * inited in softirq_init:
+ *     open_softirq(HI_SOFTIRQ, tasklet_hi_action);
+ * is mainly used by sound card device drivers or no use now?
+ */
 static void on_tasklet_hi_action_ent(struct softirq_action *a)
 {
     jprobe_return();
@@ -59,6 +67,9 @@ static void on_tasklet_hi_action_ent(struct softirq_action *a)
 DECL_CMN_JRP(tasklet_hi_action);
 
 /*
+ * Priority level: 1
+ * inited in init_timers:
+ *     open_softirq(TIMER_SOFTIRQ, run_timer_softirq);
  * run_timer_softirq runs timers and the timer-tq in bottom half context.
  */
 static void on_run_timer_softirq_ent(struct softirq_action *h)
@@ -68,6 +79,11 @@ static void on_run_timer_softirq_ent(struct softirq_action *h)
 
 DECL_CMN_JRP(run_timer_softirq);
 
+/*
+ * Priority level: 2
+ * inited in net_dev_init:
+ *     open_softirq(NET_TX_SOFTIRQ, net_tx_action);
+ */
 static void on_net_tx_action_ent(struct softirq_action *h)
 {
     jprobe_return();
@@ -75,6 +91,11 @@ static void on_net_tx_action_ent(struct softirq_action *h)
 
 DECL_CMN_JRP(net_tx_action);
 
+/*
+ * Priority level: 3
+ * inited in net_dev_init:
+ *     open_softirq(NET_RX_SOFTIRQ, net_rx_action);
+ */
 static void on_net_rx_action_ent(struct softirq_action *a)
 {
     jprobe_return();
@@ -83,6 +104,9 @@ static void on_net_rx_action_ent(struct softirq_action *a)
 DECL_CMN_JRP(net_rx_action);
 
 /*
+ * Priority level: 4
+ * inited in blk_softirq_init:
+ *     open_softirq(BLOCK_SOFTIRQ, blk_done_softirq);
  * Softirq action handler - move entries to local list and loop over them
  * while passing them to the queue registered handler.
  */
@@ -93,6 +117,25 @@ static void on_blk_done_softirq_ent(struct softirq_action *a)
 
 DECL_CMN_JRP(blk_done_softirq);
 
+/*
+ * Priority level: 5
+ * inited in irq_poll_setup:
+ *     open_softirq(IRQ_POLL_SOFTIRQ, irq_poll_softirq);
+ * irq_poll: Functions related to interrupt-poll handling in the block layer.
+ * This is similar to NAPI for network devices.
+ */
+static void on_irq_poll_softirq_ent(struct softirq_action *h)
+{
+    jprobe_return();
+}
+
+DECL_CMN_JRP(irq_poll_softirq);
+
+/*
+ * Priority level: 6
+ * inited in softirq_init:
+ *     open_softirq(TASKLET_SOFTIRQ, tasklet_hi_action);
+ */
 static void on_tasklet_action_ent(struct softirq_action *a)
 {
     jprobe_return();
@@ -101,6 +144,9 @@ static void on_tasklet_action_ent(struct softirq_action *a)
 DECL_CMN_JRP(tasklet_action);
 
 /*
+ * Priority level: 7
+ * inited in init_sched_fair_class:
+ *     open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);
  * run_rebalance_domains is triggered when needed from the scheduler tick.
  * Also triggered for nohz idle balancing (with nohz_balancing_kick set).
  */
@@ -112,6 +158,14 @@ static void on_run_rebalance_domains_ent(struct softirq_action *a)
 DECL_CMN_JRP(run_rebalance_domains);
 
 /*
+ * Priority level: 8
+ * HRTIMER_SOFTIRQ, Unused, but kept as tools rely on the numbering. Sigh!
+ */
+
+/*
+ * Priority level: 9
+ * inited in rcu_init:
+ *     open_softirq(RCU_SOFTIRQ, rcu_process_callbacks);
  * Do RCU core processing for the current CPU.
  */
 static void on_rcu_process_callbacks_ent(struct softirq_action *unused)
@@ -123,6 +177,23 @@ DECL_CMN_JRP(rcu_process_callbacks);
 
 /*
  * The guts of the apic timer interrupt
+ *
+ * Local APIC timer interrupt. This is the most natural way for doing
+ * local interrupts, but local timer interrupts can be emulated by
+ * broadcast interrupts too. [in case the hw doesn't support APIC timers]
+ *
+ * [ if a single-CPU system runs an SMP kernel then we call the local
+ *   interrupt as well. Thus we cannot inline the local irq ... ]
+ *
+ * apic:Advanced Programmable Interrupt Controller
+ *
+ * called by smp_apic_timer_interrupt, smp_apic_timer_interrupt has
+ * trace-events:
+ *     irq_vectors:local_timer_entry
+ *     irq_vectors:local_timer_exit
+ *
+ * TODO:
+ *     Should we trace all irq_vectors?
  */
 static void on_local_apic_timer_interrupt_ent(void)
 {
@@ -135,6 +206,8 @@ DECL_CMN_JRP(local_apic_timer_interrupt);
  * do_IRQ handles all normal device IRQ's (the special
  * SMP cross-CPU interrupts have their own specific
  * handlers).
+ *
+ * called by entry_64.S
  */
 static unsigned int __irq_entry on_do_IRQ_ent(struct pt_regs *regs)
 {
@@ -166,6 +239,9 @@ static void on_wakeup_softirqd_ent(void)
 
 DECL_CMN_JRP(wakeup_softirqd);
 
+/*
+ * called by run_ksoftirqd
+ */
 static void on___do_softirq_ent(void)
 {
     jprobe_return();
@@ -233,6 +309,17 @@ DECL_CMN_JRP(journal_end_buffer_io_sync);
  * This function will do some initial scheduler statistics housekeeping
  * that must be done for every newly created context, then puts the task
  * on the runqueue and wakes it.
+ *
+ * kernel_thread --------- \
+ *                          \
+ * sys_fork      --------- \_\__
+ *                          _ __ --- ==> do_fork => wake_up_new_task
+ * sys_vfork     --------- / /
+ *                          /
+ * SYSC_clone    --------- /
+ * already have a trace point: trace_sched_wakeup_new/sched:sched_wakeup_new
+ * TODO:
+ * 1. make sure the infos we need to trace
  */
 static void on_wake_up_new_task_ent(struct task_struct *p)
 {
@@ -315,6 +402,7 @@ static struct jprobe *wperf_jprobes[] = {
     &net_tx_action_jp,
     &net_rx_action_jp,
     &blk_done_softirq_jp,
+    &irq_poll_softirq_jp,
     &tasklet_action_jp,
     &run_rebalance_domains_jp,
     &rcu_process_callbacks_jp,
