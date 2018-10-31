@@ -208,6 +208,8 @@ DECL_CMN_JRP(local_apic_timer_interrupt);
  * handlers).
  *
  * called by entry_64.S
+ * Hardware -> Interrupt Controller -> Processor ->
+ *     processor interrupt kernel -> do_IRQ
  */
 static unsigned int __irq_entry on_do_IRQ_ent(struct pt_regs *regs)
 {
@@ -218,6 +220,7 @@ DECL_CMN_JRP(do_IRQ);
 
 /* aio_complete
  * Called when the io request on the given iocb is complete.
+ * We use psync, so this won't be hit?
  */
 static void on_aio_complete_ent(struct kiocb *iocb, long res, long res2)
 {
@@ -231,6 +234,13 @@ DECL_CMN_JRP(aio_complete);
  * but we also don't want to introduce a worst case 1/HZ latency
  * to the pending events, so lets the scheduler to balance
  * the softirq load for us.
+ *
+ * __do_softirq          ----------
+ *                                 \
+ * invoke_softirq        ---------- \__
+ *                                  ___ --- ==> wakeup_softirqd
+ * raise_softirq_irqoff  ----------/
+ *
  */
 static void on_wakeup_softirqd_ent(void)
 {
@@ -249,6 +259,9 @@ static void on___do_softirq_ent(void)
 
 DECL_CMN_JRP(__do_softirq);
 
+/*
+ * It is used to derive randomness from interrupt timing
+ */
 static void on_add_interrupt_randomness_ent(int irq, int irq_flags)
 {
     jprobe_return();
@@ -271,6 +284,9 @@ DECL_CMN_JRP(add_interrupt_randomness);
  * function to do a round-off before returning the results when reading
  * /proc/diskstats.  This accounts immediately for all queue usage up to
  * the current jiffies and restarts the counters again.
+ *
+ * TODO:
+ *     What can we get from it?
  */
 static void on_part_round_stats_ent(int cpu, struct hd_struct *part)
 {
@@ -284,6 +300,9 @@ DECL_CMN_JRP(part_round_stats);
  * @hb:		the futex hash bucket, must be locked by the caller
  * @q:		the futex_q to queue up on
  * @timeout:	the prepared hrtimer_sleeper, or null for no timeout
+ *
+ * futex: Fast Userspace muTEXes
+ *
  */
 static void on_futex_wait_queue_me_ent(struct futex_hash_bucket *hb, struct futex_q *q,
                 struct hrtimer_sleeper *timeout)
@@ -294,7 +313,21 @@ static void on_futex_wait_queue_me_ent(struct futex_hash_bucket *hb, struct fute
 DECL_CMN_JRP(futex_wait_queue_me);
 
 /*
+ * called by SYSC_futex/C_SYSC_futex http://man7.org/linux/man-pages/man2/futex.2.html
+ */
+static long on_do_futex_ent(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
+                            u32 __user *uaddr2, u32 val2, u32 val3)
+{
+    jprobe_return();
+    return 0;
+}
+
+DECL_CMN_JRP(do_futex);
+
+/*
  * IO end handler for temporary buffer_heads handling writes to the journal.
+ *
+ * ext4's jbd2
  */
 static void on_journal_end_buffer_io_sync_ent(struct buffer_head *bh, int uptodate)
 {
@@ -335,6 +368,16 @@ static void on_do_exit_ent(long code)
 
 DECL_CMN_JRP(do_exit);
 
+/*
+ * In the TCP output engine, all paths lead to tcp_transmit_skb() regardless of
+ * whether we are sending a TCP data packet for the first time, or a retransmit,
+ * or even a SYN packet in response to a connect() system call.
+ *
+ * At the top-level, tcp_sendmsg() and tcp_sendpage() gather up data (either from
+ * userspace or the page cache) into SKB packets and tack them onto the
+ * sk_write_queue() of the TCP socket. At appropriate times they invoke either
+ * tcp_write_xmit() or tcp_push_one() to try and output those data frames.
+ */
 static int on_tcp_sendmsg_ent(struct kiocb *iocb, struct sock *sk,
                               struct msghdr *msg, size_t size)
 {
@@ -352,6 +395,9 @@ static int on_udp_sendmsg_ent(struct sock *sk, struct msghdr *msg, size_t len)
 
 DECL_CMN_JRP(udp_sendmsg);
 
+/*
+ * Look at on_tcp_sendmsg_ent comment
+ */
 static int on_tcp_sendpage_ent(struct sock *sk, struct page *page, int offset,
                                size_t size, int flags)
 {
@@ -370,6 +416,9 @@ static int on_udp_sendpage_ent(struct sock *sk, struct page *page, int offset,
 
 DECL_CMN_JRP(udp_sendpage);
 
+/*
+ * called by SYS_sendto
+ */
 static int on_sock_sendmsg_ent(struct socket *sock, struct msghdr *msg, size_t size)
 {
     jprobe_return();
@@ -378,15 +427,25 @@ static int on_sock_sendmsg_ent(struct socket *sock, struct msghdr *msg, size_t s
 
 DECL_CMN_JRP(sock_sendmsg);
 
-static long on_do_futex_ent(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
-                            u32 __user *uaddr2, u32 val2, u32 val3)
-{
-    jprobe_return();
-    return 0;
-}
-
-DECL_CMN_JRP(do_futex);
-
+/*
+ * lock_sock and release_sock do not hold a normal spinlock directly but instead hold
+ * the owner field and do other housework as well.
+ *
+ * lock_sock grabs the lock sk→sk_lock.slock, disables local bottom halves and then it
+ * checks to see if there is an owner. If it does it spins until this releases, sets
+ * the owner and then releases sk→sk_lock.slock. This means bh_lock_sock can still
+ * execute even if the socket is “locked” provided of course that the lock_sock call
+ * isn't in execution at that very point in time.
+ *
+ * release_sock grabs the sk_lock.slock, processes any receive backlog, clears the owner,
+ * wakes up any wait queue on sk_lock.wq and then releases sk_lock.slock and enables
+ * bottom halves.
+ *
+ * bh_lock_sock and bh_release_sock just grab and release sk→sk_lock.slock
+ *
+ * TODO:
+ *     Do we need to trace release_sock?
+ */
 static void on___lock_sock_ent(struct sock *sk)
 {
     jprobe_return();
@@ -414,6 +473,7 @@ static struct jprobe *wperf_jprobes[] = {
     &add_interrupt_randomness_jp,
     &part_round_stats_jp,
     &futex_wait_queue_me_jp,
+    &do_futex_jp,
     &journal_end_buffer_io_sync_jp,
     &wake_up_new_task_jp,
     &do_exit_jp,
@@ -422,7 +482,6 @@ static struct jprobe *wperf_jprobes[] = {
     &tcp_sendpage_jp,
     &udp_sendpage_jp,
     &sock_sendmsg_jp,
-    &do_futex_jp,
     &__lock_sock_jp,
 };
 
