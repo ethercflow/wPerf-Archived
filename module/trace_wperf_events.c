@@ -1,6 +1,12 @@
 #include <linux/module.h>
 #include <linux/kprobes.h>
 
+struct per_cpu_wperf_data {
+    int softirqs_nr;
+};
+
+static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
+
 #define _DECL_CMN_JRP(fn, symbol) static struct jprobe fn##_jp = { \
     .entry              = on_##fn##_ent,                           \
     .kp.symbol_name     = ""#symbol"",                             \
@@ -53,18 +59,65 @@ on_try_to_wake_up_ent(struct task_struct *p, unsigned int state, int wake_flags)
 
 DECL_CMN_JRP(try_to_wake_up);
 
+#define _DECL_CMN_KRP(fn, symbol, cond) _DECL_CMN_KRP_##cond(fn, symbol)
+
+#define _DECL_CMN_KRP_0(fn, symbol) static struct kretprobe fn##_krp = { \
+    .entry_handler      = NULL,                                          \
+    .handler            = on_##fn##_ret,                                 \
+    .data_size          = 0,                                             \
+    .maxactive          = NR_CPUS * 2,                                   \
+    .kp.symbol_name     = ""#symbol"",                                   \
+};
+
+#define _DECL_CMN_KRP_1(fn, symbol) static struct kretprobe fn##_krp = { \
+    .entry_handler      = on_##fn##_ent,                                 \
+    .handler            = on_##fn##_ret,                                 \
+    .data_size          = sizeof(struct fn##_args),                      \
+    .maxactive          = NR_CPUS * 2,                                   \
+    .kp.symbol_name     = ""#symbol"",                                   \
+};
+
+#define _DECL_CMN_KRP_2(fn, symbol) static struct kretprobe fn##_krp = { \
+    .entry_handler      = on_##fn##_ent,                                 \
+    .handler            = on_##fn##_ret,                                 \
+    .data_size          = 0,                                             \
+    .maxactive          = NR_CPUS * 2,                                   \
+    .kp.symbol_name     = ""#symbol"",                                   \
+};
+
+#define DECL_CMN_KRP(fn, cond) _DECL_CMN_KRP(fn, fn, cond)
+
+#define WITHOUT_ENTEY        0
+#define WITH_ENTEY           1
+#define WITH_NODATA_ENTEY    2
+
 /*
  * Priority level: 0
  * inited in softirq_init:
  *     open_softirq(HI_SOFTIRQ, tasklet_hi_action);
  * is mainly used by sound card device drivers or no use now?
  */
-static void on_tasklet_hi_action_ent(struct softirq_action *a)
+static int
+on_tasklet_hi_action_ent(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
-    jprobe_return();
+    struct per_cpu_wperf_data *data;
+
+    data->softirqs_nr = HI_SOFTIRQ;
+
+    return 0;
 }
 
-DECL_CMN_JRP(tasklet_hi_action);
+static int
+on_tasklet_hi_action_ret(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+    struct per_cpu_wperf_data *data;
+
+    data->softirqs_nr = NR_SOFTIRQS;
+
+    return 0;
+}
+
+DECL_CMN_KRP(tasklet_hi_action, WITH_NODATA_ENTEY);
 
 /*
  * Priority level: 1
@@ -453,10 +506,9 @@ static void on___lock_sock_ent(struct sock *sk)
 
 DECL_CMN_JRP(__lock_sock);
 
-static struct jprobe *wperf_jprobes[] = {
+static struct jprobe *wperf_jps[] = {
     &__switch_to_jp,
     &try_to_wake_up_jp,
-    &tasklet_hi_action_jp,
     &run_timer_softirq_jp,
     &net_tx_action_jp,
     &net_rx_action_jp,
@@ -485,14 +537,25 @@ static struct jprobe *wperf_jprobes[] = {
     &__lock_sock_jp,
 };
 
+static struct kretprobe *wperf_krps[] = {
+    &tasklet_hi_action_krp,
+};
+
 static int __init trace_wperf_events_init(void)
 {
     int ret;
 
-    ret = register_jprobes(wperf_jprobes,
-                           sizeof(wperf_jprobes) / sizeof(wperf_jprobes[0]));
+    ret = register_jprobes(wperf_jps,
+                           sizeof(wperf_jps) / sizeof(wperf_jps[0]));
     if(ret) {
         pr_err("Register wperf jprobes failed\n");
+        return ret;
+    }
+
+    ret = register_kretprobes(wperf_krps,
+                              sizeof(wperf_krps) / sizeof(wperf_krps[0]));
+    if(ret) {
+        pr_err("Register wperf kretprobes failed\n");
         return ret;
     }
 
@@ -501,8 +564,10 @@ static int __init trace_wperf_events_init(void)
 
 static void __exit trace_wperf_events_exit(void)
 {
-    unregister_jprobes(wperf_jprobes,
-                       sizeof(wperf_jprobes) / sizeof(wperf_jprobes[0]));
+    unregister_jprobes(wperf_jps,
+                       sizeof(wperf_jpbs) / sizeof(wperf_jpbs[0]));
+    unregister_kretprobes(wperf_krps,
+                          sizeof(wperf_krps) / sizeof(wperf_krps[0]));
 }
 
 MODULE_AUTHOR("Zwb <ethercflow@gmail.com>");
