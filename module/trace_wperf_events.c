@@ -2,9 +2,14 @@
 #include <linux/kprobes.h>
 #include <linux/interrupt.h>
 
-#include "trace_wperf_events.h"
+struct per_cpu_wperf_data {
+    int softirqs_nr;
+};
 
 static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
+
+#define CREATE_TRACE_POINTS
+#include "trace_wperf_events.h"
 
 #define _DECL_CMN_JRP(fn, symbol) static struct jprobe fn##_jp = { \
     .entry              = on_##fn##_ent,                           \

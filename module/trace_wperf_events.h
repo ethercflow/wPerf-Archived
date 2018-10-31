@@ -13,10 +13,6 @@
 #define HARDIRQ_CTX    -1
 #define KERNEL_CTX     -2
 
-struct per_cpu_wperf_data {
-    int softirqs_nr;
-};
-
 /*
  * FIXME: add wperf time
  * TODO:  determine which clock ftrace use
@@ -32,7 +28,7 @@ TRACE_EVENT(__switch_to,
         __field(pid_t, next_pid)
         __field(long,  prev_state)
         __field(long,  next_state)
-        __filed(int,   in_which_ctx)
+        __field(int,   in_which_ctx)
     ),
 
     TP_fast_assign(
@@ -56,7 +52,7 @@ TRACE_EVENT(__switch_to,
     TP_printk("prev_pid=%d, next_pid=%d, prev_state=%llu, next_state=%llu,"
               " in_which_ctx=%d", __entry->prev_pid, __entry->next_pid,
               __entry->prev_state, __entry->next_state,
-              __entry->irq)
+              __entry->in_which_ctx)
 );
 
 #endif // _TRACE_WPERF_EVENTS_H
