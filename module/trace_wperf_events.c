@@ -60,6 +60,116 @@ on_try_to_wake_up_ent(struct task_struct *p, unsigned int state, int wake_flags)
 
 DECL_CMN_JRP(try_to_wake_up);
 
+#define _DECL_SOFTIRQ_KRP(nr, fn, symbol)                          \
+static int                                                         \
+on_##fn##_ent(struct kretprobe_instance *ri, struct pt_regs *regs) \
+{                                                                  \
+    struct per_cpu_wperf_data *data;                               \
+                                                                   \
+    data = &__get_cpu_var(wperf_cpu_data);                         \
+    data->softirqs_nr = nr;                                        \
+                                                                   \
+    return 0;                                                      \
+}                                                                  \
+                                                                   \
+static int                                                         \
+on_##fn##_ret(struct kretprobe_instance *ri, struct pt_regs *regs) \
+{                                                                  \
+    struct per_cpu_wperf_data *data;                               \
+                                                                   \
+    data = &__get_cpu_var(wperf_cpu_data);                         \
+    data->softirqs_nr = NR_SOFTIRQS;                               \
+                                                                   \
+    return 0;                                                      \
+}                                                                  \
+static struct kretprobe fn##_krp = {                               \
+    .entry_handler      = on_##fn##_ent,                           \
+    .handler            = on_##fn##_ret,                           \
+    .data_size          = 0,                                       \
+    .maxactive          = NR_CPUS * 2,                             \
+    .kp.symbol_name     = ""#symbol"",                             \
+};
+
+#define DECL_SOFTIRQ_KRP(nr, fn) _DECL_SOFTIRQ_KRP(nr, fn, fn)
+
+/*
+ * Priority level: 0
+ * inited in softirq_init:
+ *     open_softirq(HI_SOFTIRQ, tasklet_hi_action);
+ * is mainly used by sound card device drivers or no use now?
+ */
+DECL_SOFTIRQ_KRP(HI_SOFTIRQ, tasklet_hi_action);
+
+/*
+ * Priority level: 1
+ * inited in init_timers:
+ *     open_softirq(TIMER_SOFTIRQ, run_timer_softirq);
+ * run_timer_softirq runs timers and the timer-tq in bottom half context.
+ */
+DECL_SOFTIRQ_KRP(TIMER_SOFTIRQ, run_timer_softirq);
+
+
+/*
+ * Priority level: 2
+ * inited in net_dev_init:
+ *     open_softirq(NET_TX_SOFTIRQ, net_tx_action);
+ */
+DECL_SOFTIRQ_KRP(NET_TX_SOFTIRQ, net_tx_action);
+
+/*
+ * Priority level: 3
+ * inited in net_dev_init:
+ *     open_softirq(NET_RX_SOFTIRQ, net_rx_action);
+ */
+DECL_SOFTIRQ_KRP(NET_RX_SOFTIRQ, net_rx_action);
+
+/*
+ * Priority level: 4
+ * inited in blk_softirq_init:
+ *     open_softirq(BLOCK_SOFTIRQ, blk_done_softirq);
+ * Softirq action handler - move entries to local list and loop over them
+ * while passing them to the queue registered handler.
+ */
+DECL_SOFTIRQ_KRP(BLOCK_SOFTIRQ, blk_done_softirq);
+
+/*
+ * Priority level: 5
+ * inited in irq_poll_setup:
+ *     open_softirq(IRQ_POLL_SOFTIRQ, irq_poll_softirq);
+ * irq_poll: Functions related to interrupt-poll handling in the block layer.
+ * This is similar to NAPI for network devices.
+ */
+DECL_SOFTIRQ_KRP(IRQ_POLL_SOFTIRQ, irq_poll_softirq);
+
+/*
+ * Priority level: 6
+ * inited in softirq_init:
+ *     open_softirq(TASKLET_SOFTIRQ, tasklet_action);
+ */
+DECL_SOFTIRQ_KRP(TASKLET_SOFTIRQ, tasklet_action);
+
+/*
+ * Priority level: 7
+ * inited in init_sched_fair_class:
+ *     open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);
+ * run_rebalance_domains is triggered when needed from the scheduler tick.
+ * Also triggered for nohz idle balancing (with nohz_balancing_kick set).
+ */
+DECL_SOFTIRQ_KRP(SCHED_SOFTIRQ, run_rebalance_domains);
+
+/*
+ * Priority level: 8
+ * HRTIMER_SOFTIRQ, Unused, but kept as tools rely on the numbering. Sigh!
+ */
+
+/*
+ * Priority level: 9
+ * inited in rcu_init:
+ *     open_softirq(RCU_SOFTIRQ, rcu_process_callbacks);
+ * Do RCU core processing for the current CPU.
+ */
+DECL_SOFTIRQ_KRP(RCU_SOFTIRQ, rcu_process_callbacks);
+
 #define _DECL_CMN_KRP(fn, symbol, cond) _DECL_CMN_KRP_##cond(fn, symbol)
 
 #define _DECL_CMN_KRP_0(fn, symbol) static struct kretprobe fn##_krp = { \
@@ -91,145 +201,6 @@ DECL_CMN_JRP(try_to_wake_up);
 #define WITHOUT_ENTEY        0
 #define WITH_ENTEY           1
 #define WITH_NODATA_ENTEY    2
-
-/*
- * Priority level: 0
- * inited in softirq_init:
- *     open_softirq(HI_SOFTIRQ, tasklet_hi_action);
- * is mainly used by sound card device drivers or no use now?
- */
-static int
-on_tasklet_hi_action_ent(struct kretprobe_instance *ri, struct pt_regs *regs)
-{
-    struct per_cpu_wperf_data *data;
-
-    data = &__get_cpu_var(wperf_cpu_data);
-    data->softirqs_nr = HI_SOFTIRQ;
-
-    return 0;
-}
-
-static int
-on_tasklet_hi_action_ret(struct kretprobe_instance *ri, struct pt_regs *regs)
-{
-    struct per_cpu_wperf_data *data;
-
-    data = &__get_cpu_var(wperf_cpu_data);
-    data->softirqs_nr = NR_SOFTIRQS;
-
-    return 0;
-}
-
-DECL_CMN_KRP(tasklet_hi_action, WITH_NODATA_ENTEY);
-
-/*
- * Priority level: 1
- * inited in init_timers:
- *     open_softirq(TIMER_SOFTIRQ, run_timer_softirq);
- * run_timer_softirq runs timers and the timer-tq in bottom half context.
- */
-static void on_run_timer_softirq_ent(struct softirq_action *h)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(run_timer_softirq);
-
-/*
- * Priority level: 2
- * inited in net_dev_init:
- *     open_softirq(NET_TX_SOFTIRQ, net_tx_action);
- */
-static void on_net_tx_action_ent(struct softirq_action *h)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(net_tx_action);
-
-/*
- * Priority level: 3
- * inited in net_dev_init:
- *     open_softirq(NET_RX_SOFTIRQ, net_rx_action);
- */
-static void on_net_rx_action_ent(struct softirq_action *a)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(net_rx_action);
-
-/*
- * Priority level: 4
- * inited in blk_softirq_init:
- *     open_softirq(BLOCK_SOFTIRQ, blk_done_softirq);
- * Softirq action handler - move entries to local list and loop over them
- * while passing them to the queue registered handler.
- */
-static void on_blk_done_softirq_ent(struct softirq_action *a)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(blk_done_softirq);
-
-/*
- * Priority level: 5
- * inited in irq_poll_setup:
- *     open_softirq(IRQ_POLL_SOFTIRQ, irq_poll_softirq);
- * irq_poll: Functions related to interrupt-poll handling in the block layer.
- * This is similar to NAPI for network devices.
- */
-static void on_irq_poll_softirq_ent(struct softirq_action *h)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(irq_poll_softirq);
-
-/*
- * Priority level: 6
- * inited in softirq_init:
- *     open_softirq(TASKLET_SOFTIRQ, tasklet_hi_action);
- */
-static void on_tasklet_action_ent(struct softirq_action *a)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(tasklet_action);
-
-/*
- * Priority level: 7
- * inited in init_sched_fair_class:
- *     open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);
- * run_rebalance_domains is triggered when needed from the scheduler tick.
- * Also triggered for nohz idle balancing (with nohz_balancing_kick set).
- */
-static void on_run_rebalance_domains_ent(struct softirq_action *a)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(run_rebalance_domains);
-
-/*
- * Priority level: 8
- * HRTIMER_SOFTIRQ, Unused, but kept as tools rely on the numbering. Sigh!
- */
-
-/*
- * Priority level: 9
- * inited in rcu_init:
- *     open_softirq(RCU_SOFTIRQ, rcu_process_callbacks);
- * Do RCU core processing for the current CPU.
- */
-static void on_rcu_process_callbacks_ent(struct softirq_action *unused)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(rcu_process_callbacks);
 
 /*
  * The guts of the apic timer interrupt
@@ -512,14 +483,6 @@ DECL_CMN_JRP(__lock_sock);
 static struct jprobe *wperf_jps[] = {
     &__switch_to_jp,
     &try_to_wake_up_jp,
-    &run_timer_softirq_jp,
-    &net_tx_action_jp,
-    &net_rx_action_jp,
-    &blk_done_softirq_jp,
-    &irq_poll_softirq_jp,
-    &tasklet_action_jp,
-    &run_rebalance_domains_jp,
-    &rcu_process_callbacks_jp,
     &local_apic_timer_interrupt_jp,
     &do_IRQ_jp,
     &aio_complete_jp,
@@ -542,6 +505,14 @@ static struct jprobe *wperf_jps[] = {
 
 static struct kretprobe *wperf_krps[] = {
     &tasklet_hi_action_krp,
+    &run_timer_softirq_krp,
+    &net_tx_action_krp,
+    &net_rx_action_krp,
+    &blk_done_softirq_krp,
+    &irq_poll_softirq_krp,
+    &tasklet_action_krp,
+    &run_rebalance_domains_krp,
+    &rcu_process_callbacks_krp,
 };
 
 static int __init trace_wperf_events_init(void)
