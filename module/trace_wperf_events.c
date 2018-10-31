@@ -2,9 +2,7 @@
 #include <linux/kprobes.h>
 #include <linux/interrupt.h>
 
-struct per_cpu_wperf_data {
-    int softirqs_nr;
-};
+#include "trace_wperf_events.h"
 
 static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
 
@@ -28,6 +26,7 @@ static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
 static struct task_struct *
 on___switch_to_ent(struct task_struct *prev_p, struct task_struct *next_p)
 {
+    trace___switch_to(prev_p, next_p);
     jprobe_return();
     return NULL;
 }
