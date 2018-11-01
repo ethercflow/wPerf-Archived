@@ -58,6 +58,7 @@ DECL_CMN_JRP(__switch_to);
 static int
 on_try_to_wake_up_ent(struct task_struct *p, unsigned int state, int wake_flags)
 {
+    trace_try_to_wake_up(p, state, wake_flags);
     jprobe_return();
     return 0;
 }
@@ -245,6 +246,7 @@ DECL_CMN_JRP(local_apic_timer_interrupt);
 static unsigned int __irq_entry on_do_IRQ_ent(struct pt_regs *regs)
 {
     jprobe_return();
+    return 0;
 }
 
 DECL_CMN_JRP(do_IRQ);
