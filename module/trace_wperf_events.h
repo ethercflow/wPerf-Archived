@@ -11,7 +11,8 @@
  * Maybe has a better way
  */
 #define HARDIRQ_CTX    -1
-#define KERNEL_CTX     -2
+#define KSOFTIRQ       -2
+#define KERNEL_CTX     -3
 
 /*
  * FIXME: add wperf time
@@ -19,12 +20,13 @@
  */
 TRACE_EVENT(__switch_to,
 
-    TP_PROTO(struct task_struct *prev_p, struct task_struct *next_p),
+    TP_PROTO(struct task_struct *prev_p, struct task_struct *next_p, u64 tsc),
 
-    TP_ARGS(prev_p, next_p),
+    TP_ARGS(prev_p, next_p, tsc),
 
     TP_STRUCT__entry(
         __field(int,   type)
+        __field(u64,   tsc)
         __field(pid_t, prev_pid)
         __field(pid_t, next_pid)
         __field(long,  prev_state)
@@ -36,6 +38,7 @@ TRACE_EVENT(__switch_to,
         struct per_cpu_wperf_data *data;
 
         __entry->type       = 0; /* FIXME */
+        __entry->tsc        = tsc;
         __entry->prev_pid   = prev_p->pid;
         __entry->next_pid   = next_p->pid;
         __entry->prev_state = prev_p->state;
@@ -51,9 +54,9 @@ TRACE_EVENT(__switch_to,
             __entry->in_which_ctx = KERNEL_CTX;
     ),
 
-    TP_printk("tyep=%d, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+    TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
               " next_state=%ld, in_which_ctx=%d",
-	      __entry->type,
+              __entry->type, __entry->tsc,
               __entry->prev_pid, __entry->next_pid,
               __entry->prev_state, __entry->next_state,
               __entry->in_which_ctx)
@@ -61,12 +64,13 @@ TRACE_EVENT(__switch_to,
 
 TRACE_EVENT(try_to_wake_up,
 
-    TP_PROTO(struct task_struct *p, unsigned int state, int wake_flags),
+    TP_PROTO(struct task_struct *p, unsigned int state, int wake_flags, u64 tsc),
 
-    TP_ARGS(p, state, wake_flags),
+    TP_ARGS(p, state, wake_flags, tsc),
 
     TP_STRUCT__entry(
         __field(int,   type)
+        __field(u64,   tsc)
         __field(pid_t, prev_pid)
         __field(pid_t, next_pid)
         __field(long,  prev_state)
@@ -78,6 +82,7 @@ TRACE_EVENT(try_to_wake_up,
         struct per_cpu_wperf_data *data;
 
         __entry->type       = 1; /* FIXME */
+        __entry->tsc        = tsc;
         __entry->prev_pid   = current->pid;
         __entry->next_pid   = p->pid;
         __entry->prev_state = current->state;
@@ -93,12 +98,129 @@ TRACE_EVENT(try_to_wake_up,
             __entry->in_which_ctx = KERNEL_CTX;
     ),
 
-    TP_printk("tyep=%d, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+    TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
               " next_state=%ld, in_which_ctx=%d",
-	      __entry->type,
+              __entry->type, __entry->tsc,
               __entry->prev_pid, __entry->next_pid,
               __entry->prev_state, __entry->next_state,
               __entry->in_which_ctx)
+);
+
+TRACE_EVENT(__do_softirq_ret,
+
+    TP_PROTO(int type, u64 begin_time),
+
+    TP_ARGS(type, begin_time),
+
+    TP_STRUCT__entry(
+        __field(int, type)
+        __field(u64, begin_time)
+    ),
+
+    TP_fast_assign(
+        __entry->type = type; 
+        __entry->begin_time = begin_time;
+    ),
+
+    TP_printk("type=%d, begin_time=%llu",
+              __entry->type, __entry->begin_time)
+);
+
+TRACE_EVENT(futex_wait_queue_me,
+
+    TP_PROTO(u64 tsc),
+
+    TP_ARGS(tsc),
+
+    TP_STRUCT__entry(
+        __field(int,   type)
+        __field(u64,   tsc)
+    ),
+
+    TP_fast_assign(
+        __entry->type = 1; /* FIXME */
+        __entry->tsc  = tsc;
+    ),
+
+    TP_printk("tyep=%d, tsc=%llu", __entry->type, __entry->tsc)
+);
+
+TRACE_EVENT(journal_end_buffer_io_sync,
+
+    TP_PROTO(bool in_serving_softirq),
+
+    TP_ARGS(in_serving_softirq),
+
+    TP_STRUCT__entry(
+        __field(bool, in_serving_softirq)
+    ),
+
+    TP_fast_assign(
+        __entry->in_serving_softirq = in_serving_softirq;
+    ),
+
+    TP_printk("in_serving_softirq=%d", __entry->in_serving_softirq)
+);
+
+TRACE_EVENT(wake_up_new_task,
+
+    TP_PROTO(struct task_struct *p, u64 tsc),
+
+    TP_ARGS(p, tsc),
+
+    TP_STRUCT__entry(
+        __field(int,   type)
+        __field(u64,   tsc)
+        __field(pid_t, prev_pid)
+        __field(pid_t, next_pid)
+        __field(long,  prev_state)
+        __field(long,  next_state)
+    ),
+
+    TP_fast_assign(
+        __entry->type       = 2; /* FIXME */
+        __entry->tsc        = tsc;
+        __entry->prev_pid   = current->pid;
+        __entry->next_pid   = p->pid;
+        __entry->prev_state = current->state;
+        __entry->next_state = p->state;
+    ),
+
+    TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+              " next_state=%ld",
+              __entry->type, __entry->tsc,
+              __entry->prev_pid, __entry->next_pid,
+              __entry->prev_state, __entry->next_state)
+);
+
+TRACE_EVENT(do_exit,
+
+    TP_PROTO(u64 tsc),
+
+    TP_ARGS(tsc),
+
+    TP_STRUCT__entry(
+        __field(int,   type)
+        __field(u64,   tsc)
+        __field(pid_t, prev_pid)
+        __field(pid_t, next_pid)
+        __field(long,  prev_state)
+        __field(long,  next_state)
+    ),
+
+    TP_fast_assign(
+        __entry->type       = 3; /* FIXME */
+        __entry->prev_pid   = current->pid;
+        __entry->next_pid   = 0;
+        __entry->prev_state = current->state;
+        __entry->next_state = 0;
+    ),
+
+    TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+              " next_state=%ld",
+              __entry->type, __entry->tsc,
+              __entry->prev_pid, __entry->next_pid,
+              __entry->prev_state, __entry->next_state)
 );
 
 #endif // _TRACE_WPERF_EVENTS_H

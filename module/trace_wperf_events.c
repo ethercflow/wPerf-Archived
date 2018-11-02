@@ -4,6 +4,7 @@
 
 struct per_cpu_wperf_data {
     int softirqs_nr;
+    int softirq_btime; // begin time
 };
 
 static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
@@ -31,7 +32,7 @@ static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
 static struct task_struct *
 on___switch_to_ent(struct task_struct *prev_p, struct task_struct *next_p)
 {
-    trace___switch_to(prev_p, next_p);
+    trace___switch_to(prev_p, next_p, rdtsc_ordered());
     jprobe_return();
     return NULL;
 }
@@ -58,12 +59,37 @@ DECL_CMN_JRP(__switch_to);
 static int
 on_try_to_wake_up_ent(struct task_struct *p, unsigned int state, int wake_flags)
 {
-    trace_try_to_wake_up(p, state, wake_flags);
+    trace_try_to_wake_up(p, state, wake_flags, rdtsc_ordered());
     jprobe_return();
     return 0;
 }
 
 DECL_CMN_JRP(try_to_wake_up);
+
+/*
+ * we cannot loop indefinitely here to avoid userspace starvation,
+ * but we also don't want to introduce a worst case 1/HZ latency
+ * to the pending events, so lets the scheduler to balance
+ * the softirq load for us.
+ *
+ * __do_softirq          ----------
+ *                                 \
+ * invoke_softirq        ---------- \__
+ *                                  ___ --- ==> wakeup_softirqd
+ * raise_softirq_irqoff  ----------/
+ *
+ * TODO
+ * needn't kretprobe? why?
+ */
+static void on_wakeup_softirqd_ent(void)
+{
+    struct per_cpu_wperf_data *data;
+    data = &__get_cpu_var(wperf_cpu_data);
+    data->softirqs_nr = KSOFTIRQ;
+    jprobe_return();
+}
+
+DECL_CMN_JRP(wakeup_softirqd);
 
 #define _DECL_SOFTIRQ_KRP(nr, fn, symbol)                          \
 static int                                                         \
@@ -208,89 +234,29 @@ DECL_SOFTIRQ_KRP(RCU_SOFTIRQ, rcu_process_callbacks);
 #define WITH_NODATA_ENTEY    2
 
 /*
- * The guts of the apic timer interrupt
- *
- * Local APIC timer interrupt. This is the most natural way for doing
- * local interrupts, but local timer interrupts can be emulated by
- * broadcast interrupts too. [in case the hw doesn't support APIC timers]
- *
- * [ if a single-CPU system runs an SMP kernel then we call the local
- *   interrupt as well. Thus we cannot inline the local irq ... ]
- *
- * apic:Advanced Programmable Interrupt Controller
- *
- * called by smp_apic_timer_interrupt, smp_apic_timer_interrupt has
- * trace-events:
- *     irq_vectors:local_timer_entry
- *     irq_vectors:local_timer_exit
- *
- * TODO:
- *     Should we trace all irq_vectors?
+ * called by run_ksoftirqd
  */
-static void on_local_apic_timer_interrupt_ent(void)
+static int on___do_softirq_ent(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
-    jprobe_return();
-}
+    struct per_cpu_wperf_data *data;
 
-DECL_CMN_JRP(local_apic_timer_interrupt);
+    data = &__get_cpu_var(wperf_cpu_data);
+    data->softirq_btime = rdtsc_ordered();
 
-/*
- * do_IRQ handles all normal device IRQ's (the special
- * SMP cross-CPU interrupts have their own specific
- * handlers).
- *
- * called by entry_64.S
- * Hardware -> Interrupt Controller -> Processor ->
- *     processor interrupt kernel -> do_IRQ
- */
-static unsigned int __irq_entry on_do_IRQ_ent(struct pt_regs *regs)
-{
-    jprobe_return();
     return 0;
 }
 
-DECL_CMN_JRP(do_IRQ);
-
-/* aio_complete
- * Called when the io request on the given iocb is complete.
- * We use psync, so this won't be hit?
- */
-static void on_aio_complete_ent(struct kiocb *iocb, long res, long res2)
+static int on___do_softirq_ret(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
-    jprobe_return();
+    struct per_cpu_wperf_data *data;
+
+    data = &__get_cpu_var(wperf_cpu_data);
+
+    trace___do_softirq_ret(1, data->softirq_btime); /* FIXME */
+    return 0;
 }
 
-DECL_CMN_JRP(aio_complete);
-
-/*
- * we cannot loop indefinitely here to avoid userspace starvation,
- * but we also don't want to introduce a worst case 1/HZ latency
- * to the pending events, so lets the scheduler to balance
- * the softirq load for us.
- *
- * __do_softirq          ----------
- *                                 \
- * invoke_softirq        ---------- \__
- *                                  ___ --- ==> wakeup_softirqd
- * raise_softirq_irqoff  ----------/
- *
- */
-static void on_wakeup_softirqd_ent(void)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(wakeup_softirqd);
-
-/*
- * called by run_ksoftirqd
- */
-static void on___do_softirq_ent(void)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(__do_softirq);
+DECL_CMN_KRP(__do_softirq, WITH_NODATA_ENTEY);
 
 /*
  * It is used to derive randomness from interrupt timing
@@ -340,6 +306,7 @@ DECL_CMN_JRP(part_round_stats);
 static void on_futex_wait_queue_me_ent(struct futex_hash_bucket *hb, struct futex_q *q,
                 struct hrtimer_sleeper *timeout)
 {
+    trace_futex_wait_queue_me(rdtsc_ordered());
     jprobe_return();
 }
 
@@ -364,6 +331,7 @@ DECL_CMN_JRP(do_futex);
  */
 static void on_journal_end_buffer_io_sync_ent(struct buffer_head *bh, int uptodate)
 {
+    trace_journal_end_buffer_io_sync(in_serving_softirq() >0);
     jprobe_return();
 }
 
@@ -389,6 +357,7 @@ DECL_CMN_JRP(journal_end_buffer_io_sync);
  */
 static void on_wake_up_new_task_ent(struct task_struct *p)
 {
+    trace_wake_up_new_task(p, rdtsc_ordered());
     jprobe_return();
 }
 
@@ -396,6 +365,7 @@ DECL_CMN_JRP(wake_up_new_task);
 
 static void on_do_exit_ent(long code)
 {
+    trace_do_exit(rdtsc_ordered());
     jprobe_return();
 }
 
@@ -489,11 +459,7 @@ DECL_CMN_JRP(__lock_sock);
 static struct jprobe *wperf_jps[] = {
     &__switch_to_jp,
     &try_to_wake_up_jp,
-    &local_apic_timer_interrupt_jp,
-    &do_IRQ_jp,
-    &aio_complete_jp,
     &wakeup_softirqd_jp,
-    &__do_softirq_jp,
     &add_interrupt_randomness_jp,
     &part_round_stats_jp,
     &futex_wait_queue_me_jp,
@@ -519,6 +485,7 @@ static struct kretprobe *wperf_krps[] = {
     &tasklet_action_krp,
     &run_rebalance_domains_krp,
     &rcu_process_callbacks_krp,
+    &__do_softirq_krp,
 };
 
 static int __init trace_wperf_events_init(void)
