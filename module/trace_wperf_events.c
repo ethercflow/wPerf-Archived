@@ -442,6 +442,7 @@ DECL_CMN_JRP(sock_sendmsg);
  */
 static void on___lock_sock_ent(struct sock *sk)
 {
+    trace___lock_sock(3, rdtsc_ordered());
     jprobe_return();
 }
 

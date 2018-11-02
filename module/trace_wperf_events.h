@@ -126,7 +126,7 @@ TRACE_EVENT(__do_softirq_ret,
               __entry->type, __entry->begin_time)
 );
 
-DECLARE_EVENT_CLASS(futex_common,
+DECLARE_EVENT_CLASS(common_event,
 
     TP_PROTO(int type, u64 tsc),
 
@@ -145,14 +145,14 @@ DECLARE_EVENT_CLASS(futex_common,
     TP_printk("tyep=%d, tsc=%llu", __entry->type, __entry->tsc)
 );
 
-DEFINE_EVENT(futex_common, futex_wait_queue_me,
+DEFINE_EVENT(common_event, futex_wait_queue_me,
 
     TP_PROTO(int type, u64 tsc),
 
     TP_ARGS(type, tsc)
 );
 
-DEFINE_EVENT(futex_common, do_futex,
+DEFINE_EVENT(common_event, do_futex,
 
     TP_PROTO(int type, u64 tsc),
 
@@ -235,6 +235,13 @@ TRACE_EVENT(do_exit,
               __entry->type, __entry->tsc,
               __entry->prev_pid, __entry->next_pid,
               __entry->prev_state, __entry->next_state)
+);
+
+DEFINE_EVENT(common_event, __lock_sock,
+
+    TP_PROTO(int type, u64 tsc),
+
+    TP_ARGS(type, tsc)
 );
 
 #endif // _TRACE_WPERF_EVENTS_H
