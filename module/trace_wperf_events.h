@@ -118,7 +118,7 @@ TRACE_EVENT(__do_softirq_ret,
     ),
 
     TP_fast_assign(
-        __entry->type = type; 
+        __entry->type = type;
         __entry->begin_time = begin_time;
     ),
 
@@ -126,11 +126,11 @@ TRACE_EVENT(__do_softirq_ret,
               __entry->type, __entry->begin_time)
 );
 
-TRACE_EVENT(futex_wait_queue_me,
+DECLARE_EVENT_CLASS(futex_common,
 
-    TP_PROTO(u64 tsc),
+    TP_PROTO(int type, u64 tsc),
 
-    TP_ARGS(tsc),
+    TP_ARGS(type, tsc),
 
     TP_STRUCT__entry(
         __field(int,   type)
@@ -138,11 +138,25 @@ TRACE_EVENT(futex_wait_queue_me,
     ),
 
     TP_fast_assign(
-        __entry->type = 1; /* FIXME */
+        __entry->type = type;
         __entry->tsc  = tsc;
     ),
 
     TP_printk("tyep=%d, tsc=%llu", __entry->type, __entry->tsc)
+);
+
+DEFINE_EVENT(futex_common, futex_wait_queue_me,
+
+    TP_PROTO(int type, u64 tsc),
+
+    TP_ARGS(type, tsc)
+);
+
+DEFINE_EVENT(futex_common, do_futex,
+
+    TP_PROTO(int type, u64 tsc),
+
+    TP_ARGS(type, tsc)
 );
 
 TRACE_EVENT(journal_end_buffer_io_sync,

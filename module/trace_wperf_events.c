@@ -258,16 +258,6 @@ static int on___do_softirq_ret(struct kretprobe_instance *ri, struct pt_regs *re
 
 DECL_CMN_KRP(__do_softirq, WITH_NODATA_ENTEY);
 
-/*
- * It is used to derive randomness from interrupt timing
- */
-static void on_add_interrupt_randomness_ent(int irq, int irq_flags)
-{
-    jprobe_return();
-}
-
-DECL_CMN_JRP(add_interrupt_randomness);
-
 /**
  * part_round_stats() - Round off the performance stats on a struct disk_stats.
  * @cpu: cpu number for stats access
@@ -306,7 +296,7 @@ DECL_CMN_JRP(part_round_stats);
 static void on_futex_wait_queue_me_ent(struct futex_hash_bucket *hb, struct futex_q *q,
                 struct hrtimer_sleeper *timeout)
 {
-    trace_futex_wait_queue_me(rdtsc_ordered());
+    trace_futex_wait_queue_me(1, rdtsc_ordered()); /* FIXME */
     jprobe_return();
 }
 
@@ -318,6 +308,7 @@ DECL_CMN_JRP(futex_wait_queue_me);
 static long on_do_futex_ent(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
                             u32 __user *uaddr2, u32 val2, u32 val3)
 {
+    trace_do_futex(1, rdtsc_ordered()); /* FIXME */
     jprobe_return();
     return 0;
 }
@@ -460,7 +451,6 @@ static struct jprobe *wperf_jps[] = {
     &__switch_to_jp,
     &try_to_wake_up_jp,
     &wakeup_softirqd_jp,
-    &add_interrupt_randomness_jp,
     &part_round_stats_jp,
     &futex_wait_queue_me_jp,
     &do_futex_jp,
