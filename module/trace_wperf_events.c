@@ -1,12 +1,21 @@
 #include <linux/module.h>
 #include <linux/kprobes.h>
 #include <linux/interrupt.h>
+#include <linux/genhd.h>
+#include <linux/jiffies.h>
 
-enum { 
+enum {
     HARDIRQ = NR_SOFTIRQS + 1,
     KSOFTIRQ,
     KERNEL
 };
+
+#define MAX_DISK_NUM      20
+#define MAX_DNAME_SIZE    20
+
+char dnames[MAX_DISK_NUM][MAX_DNAME_SIZE];
+long dutils[MAX_DISK_NUM];
+static int didx = 0;
 
 struct per_cpu_wperf_data {
     int softirqs_nr;
@@ -264,6 +273,16 @@ static int on___do_softirq_ret(struct kretprobe_instance *ri, struct pt_regs *re
 
 DECL_CMN_KRP(__do_softirq, WITH_NODATA_ENTEY);
 
+static inline int dev_idx(const char *dname)
+{
+    int i;
+    for (i = 0; i < didx; i++) {
+        if (!strncmp(dname, dnames[i], MAX_DNAME_SIZE))
+            return i;
+    }
+    return -1;
+}
+
 /**
  * part_round_stats() - Round off the performance stats on a struct disk_stats.
  * @cpu: cpu number for stats access
@@ -279,12 +298,27 @@ DECL_CMN_KRP(__do_softirq, WITH_NODATA_ENTEY);
  * function to do a round-off before returning the results when reading
  * /proc/diskstats.  This accounts immediately for all queue usage up to
  * the current jiffies and restarts the counters again.
- *
- * TODO:
- *     What can we get from it?
  */
 static void on_part_round_stats_ent(int cpu, struct hd_struct *part)
 {
+    unsigned long now = jiffies;
+    struct device *ddev = NULL;
+    const char *dname;
+    int idx;
+
+    if (part->partno)
+        part = &part_to_disk(part)->part0;
+
+    ddev = part_to_dev(part);
+    dname = dev_name(ddev);
+    idx = dev_idx(dname);
+    BUG_ON(idx == -1);
+
+    if (time_after(now, part->stamp) && part_in_flight(part)) {
+        dutils[idx] += now - part->stamp; // TODO: is this safe?
+        trace_part_round_stats(dutils);
+    }
+
     jprobe_return();
 }
 
