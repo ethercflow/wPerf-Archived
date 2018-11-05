@@ -114,36 +114,6 @@ TRACE_EVENT(__do_softirq_ret,
               __entry->type, __entry->begin_time)
 );
 
-TRACE_EVENT(part_round_stats,
-
-    TP_PROTO(long *dutils),
-
-    TP_ARGS(dutils),
-
-    TP_STRUCT__entry(
-        __array(long, dutils, MAX_DISK_NUM)
-    ),
-
-    TP_fast_assign(
-        memcpy(__entry->dutils, dutils, MAX_DISK_NUM * sizeof(long));
-    ),
-
-    TP_printk("%ld, %ld, %ld, %ld, %ld, "
-              "%ld, %ld, %ld, %ld, %ld, "
-              "%ld, %ld, %ld, %ld, %ld, "
-              "%ld, %ld, %ld, %ld, %ld",
-              __entry->dutils[0], __entry->dutils[1],
-              __entry->dutils[2], __entry->dutils[3],
-              __entry->dutils[4], __entry->dutils[5],
-              __entry->dutils[6], __entry->dutils[7],
-              __entry->dutils[8], __entry->dutils[9],
-              __entry->dutils[10], __entry->dutils[11],
-              __entry->dutils[12], __entry->dutils[13],
-              __entry->dutils[14], __entry->dutils[15],
-              __entry->dutils[16], __entry->dutils[17],
-              __entry->dutils[18], __entry->dutils[19])
-);
-
 DECLARE_EVENT_CLASS(common_event,
 
     TP_PROTO(int type, u64 tsc),

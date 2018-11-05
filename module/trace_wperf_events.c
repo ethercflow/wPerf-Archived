@@ -3,6 +3,7 @@
 #include <linux/interrupt.h>
 #include <linux/genhd.h>
 #include <linux/jiffies.h>
+#include <linux/debugfs.h>
 
 enum {
     HARDIRQ = NR_SOFTIRQS + 1,
@@ -314,11 +315,10 @@ static void on_part_round_stats_ent(int cpu, struct hd_struct *part)
     idx = dev_idx(dname);
 
     if (idx < 0)
-	goto end;
+        goto end;
 
     if (time_after(now, part->stamp) && part_in_flight(part)) {
         dutils[idx] += now - part->stamp; // TODO: is this safe?
-        trace_part_round_stats(dutils);
     }
 
 end:
@@ -521,6 +521,20 @@ static struct kretprobe *wperf_krps[] = {
     &rcu_process_callbacks_krp,
     &__do_softirq_krp,
 };
+
+static struct dentry *wperf_lookup(void)
+{
+    struct dentry *parent = NULL;
+    const char *dirs[] = { "tracing", "events", "wperf", NULL };
+    const char **pdir = &dirs[0];
+
+    while (*pdir)
+        parent = debugfs_lookup(*pdir++, parent);
+
+    BUG_ON(parent == NULL);
+
+    return parent;
+}
 
 static int __init trace_wperf_events_init(void)
 {
