@@ -2,6 +2,12 @@
 #include <linux/kprobes.h>
 #include <linux/interrupt.h>
 
+enum { 
+    HARDIRQ = NR_SOFTIRQS + 1,
+    KSOFTIRQ,
+    KERNEL
+};
+
 struct per_cpu_wperf_data {
     int softirqs_nr;
     int softirq_btime; // begin time

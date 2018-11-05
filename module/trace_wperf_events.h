@@ -6,18 +6,6 @@
 
 #include <linux/tracepoint.h>
 
-/*
- * FIXME:
- * Maybe has a better way
- */
-#define HARDIRQ_CTX    -1
-#define KSOFTIRQ       -2
-#define KERNEL_CTX     -3
-
-/*
- * FIXME: add wperf time
- * TODO:  determine which clock ftrace use
- */
 TRACE_EVENT(__switch_to,
 
     TP_PROTO(struct task_struct *prev_p, struct task_struct *next_p, u64 tsc),
@@ -47,11 +35,11 @@ TRACE_EVENT(__switch_to,
         data = &__get_cpu_var(wperf_cpu_data);
 
         if (in_irq())
-            __entry->in_which_ctx = HARDIRQ_CTX;
+            __entry->in_which_ctx = HARDIRQ;
         else if (in_serving_softirq())
             __entry->in_which_ctx = data->softirqs_nr;
         else  /* TODO: maybe merged with in_serving_softirq */
-            __entry->in_which_ctx = KERNEL_CTX;
+            __entry->in_which_ctx = KERNEL;
     ),
 
     TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
@@ -91,11 +79,11 @@ TRACE_EVENT(try_to_wake_up,
         data = &__get_cpu_var(wperf_cpu_data);
 
         if (in_irq())
-            __entry->in_which_ctx = HARDIRQ_CTX;
+            __entry->in_which_ctx = HARDIRQ;
         else if (in_serving_softirq())
             __entry->in_which_ctx = data->softirqs_nr;
         else  /* TODO: maybe merged with in_serving_softirq */
-            __entry->in_which_ctx = KERNEL_CTX;
+            __entry->in_which_ctx = KERNEL;
     ),
 
     TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
