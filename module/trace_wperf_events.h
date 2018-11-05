@@ -125,7 +125,7 @@ TRACE_EVENT(part_round_stats,
     ),
 
     TP_fast_assign(
-        memcpy(__entry->dutils, dutils, MAX_DISK_NUM);
+        memcpy(__entry->dutils, dutils, MAX_DISK_NUM * sizeof(long));
     ),
 
     TP_printk("%ld, %ld, %ld, %ld, %ld, "

@@ -312,13 +312,16 @@ static void on_part_round_stats_ent(int cpu, struct hd_struct *part)
     ddev = part_to_dev(part);
     dname = dev_name(ddev);
     idx = dev_idx(dname);
-    BUG_ON(idx == -1);
+
+    if (idx < 0)
+	goto end;
 
     if (time_after(now, part->stamp) && part_in_flight(part)) {
         dutils[idx] += now - part->stamp; // TODO: is this safe?
         trace_part_round_stats(dutils);
     }
 
+end:
     jprobe_return();
 }
 
