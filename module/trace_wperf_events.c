@@ -18,12 +18,24 @@ char dnames[MAX_DISK_NUM][MAX_DNAME_SIZE];
 long dutils[MAX_DISK_NUM];
 static int didx = 0;
 
+static struct dentry *wperf_root = NULL;
+
 struct per_cpu_wperf_data {
     int softirqs_nr;
     int softirq_btime; // begin time
 };
 
 static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
+
+/*
+ * FIXME: use assoc_array or sth else
+ */
+struct tx_stat {
+    #define MAX_PID_NUM    65535
+    long bytes[MAX_PID_NUM];
+};
+
+static struct tx_stat tx_stat;
 
 #define CREATE_TRACE_POINTS
 #include "trace_wperf_events.h"
@@ -418,6 +430,7 @@ DECL_CMN_JRP(do_exit);
 static int on_tcp_sendmsg_ent(struct kiocb *iocb, struct sock *sk,
                               struct msghdr *msg, size_t size)
 {
+    tx_stat.bytes[current->pid] += size;
     jprobe_return();
     return 0;
 }
@@ -426,6 +439,7 @@ DECL_CMN_JRP(tcp_sendmsg);
 
 static int on_udp_sendmsg_ent(struct sock *sk, struct msghdr *msg, size_t len)
 {
+    tx_stat.bytes[current->pid] += len;
     jprobe_return();
     return 0;
 }
@@ -438,6 +452,7 @@ DECL_CMN_JRP(udp_sendmsg);
 static int on_tcp_sendpage_ent(struct sock *sk, struct page *page, int offset,
                                size_t size, int flags)
 {
+    tx_stat.bytes[current->pid] += size;
     jprobe_return();
     return 0;
 }
@@ -447,6 +462,7 @@ DECL_CMN_JRP(tcp_sendpage);
 static int on_udp_sendpage_ent(struct sock *sk, struct page *page, int offset,
                                size_t size, int flags)
 {
+    tx_stat.bytes[current->pid] += size;
     jprobe_return();
     return 0;
 }
@@ -458,6 +474,7 @@ DECL_CMN_JRP(udp_sendpage);
  */
 static int on_sock_sendmsg_ent(struct socket *sock, struct msghdr *msg, size_t size)
 {
+    tx_stat.bytes[current->pid] += size;
     jprobe_return();
     return 0;
 }
@@ -553,6 +570,8 @@ static int __init trace_wperf_events_init(void)
         pr_err("Register wperf kretprobes failed\n");
         return ret;
     }
+
+    wperf_root = wperf_lookup();
 
     return 0;
 }
