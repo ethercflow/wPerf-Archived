@@ -37,6 +37,23 @@ struct tx_stat {
 
 static struct tx_stat tx_stat;
 
+struct ev_file_ops {
+    int (*open)(void *);
+    int (*read)(void *);
+    int (*write)(void *);
+    int (*release)(void *);
+};
+
+struct ev_file {
+    char *name;
+    struct ev_file_ops *ops;
+};
+
+struct event {
+    char *name;
+    struct ev_file **ev_file;
+};
+
 #define CREATE_TRACE_POINTS
 #include "trace_wperf_events.h"
 
@@ -539,28 +556,96 @@ static struct kretprobe *wperf_krps[] = {
     &__do_softirq_krp,
 };
 
-static int dutils_enable_open(struct inode *inode, struct file *file)
+static int dutils_filter_open(void *data)
 {
-    int ret;
-
-    ret = disable_jprobe(&part_round_stats_jp);
-    if (ret < 0)
-        pr_warn("disable_jprobe: part_round_stats_jp failed");
-    pr_warn("disable_jprobe: part_round_stats_jp succeed");
-    return ret;
+    pr_warn("dutils_filter_open");
+    return 0;
 }
 
-static ssize_t
-dutils_enable_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
+static int dutils_filter_read(void *data)
 {
-
+    pr_warn("dutils_filter_read");
+    return 0;
 }
 
-static ssize_t
-dutils_enable_write(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
+static int dutils_filter_write(void *data)
 {
+    char *buf, *s, *token;
+    size_t len;
+
+    buf = kstrdup(data, GFP_KERNEL);
+    if (buf == NULL)
+        return -ENOMEM;
+    s = strstrip(buf);
+
+    didx = 0;
+
+    while (1) {
+        token = strsep(&s, ",");
+        if (token == NULL)
+            break;
+
+        if (*token == '\0')
+            continue;
+
+        len = strlen(token) + 1;
+        if (len > MAX_DNAME_SIZE)
+            return -EINVAL;
+
+        strncpy(dnames[didx++], token, len);
+    }
+    kfree(buf);
+
+    return 0;
+}
+
+static int dutils_filter_release(void *data)
+{
+    pr_warn("dutils_filter_release");
+    return 0;
+}
+
+static struct ev_file_ops ev_dutils_filter_ops = {
+    .open = &dutils_filter_open,
+    .read = &dutils_filter_read,
+    .write = &dutils_filter_write,
+    .release = &dutils_filter_release,
+};
+
+static struct ev_file ev_dutils_filter = {
+    .name = "filter",
+    .ops = &ev_dutils_filter_ops,
+};
+
+static struct ev_file *ev_dutils_files[] = {
+    &ev_dutils_filter,
+    NULL,
+};
+
+static struct event ev_dutils = {
+    .name = "dutils",
+    .ev_file = &ev_dutils_files[0],
+};
+
+static int event_open(struct inode *inode, struct file *file)
+{
+    struct ev_file *ef = inode->i_private;
+
+    return ef->ops->open(ef);
+}
+
+static ssize_t event_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
+{
+    struct ev_file *ef = file_inode(filp)->i_private;
+
+    return ef->ops->read(ef);
+}
+
+static ssize_t event_write(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
+{
+    struct ev_file *ef = file_inode(filp)->i_private;
     char *buf;
-    int err = -ENODEV;
+    int err;
 
     if (cnt >= PAGE_SIZE)
         return -EINVAL;
@@ -575,62 +660,48 @@ dutils_enable_write(struct file *filp, const char __user *ubuf, size_t cnt, loff
     }
     buf[cnt] = '\0';
 
-    pr_warn("recv userland msg: %s\n", buf);
-
+    err = !ef->ops->write(buf);
     free_page((unsigned long) buf);
+    if (err < 0)
+        return -EINVAL;
 
     *ppos += cnt;
 
     return cnt;
 }
 
-static int dutils_enable_release(struct inode *inode, struct file *file)
+static int event_release(struct inode *inode, struct file *file)
 {
-    int ret;
+    struct ev_file *ef = inode->i_private;
 
-    ret = enable_jprobe(&part_round_stats_jp);
-    if (ret < 0)
-        pr_warn("enable_jprobe: part_round_stats_jp failed");
-    pr_warn("enable_jprobe: part_round_stats_jp succeed");
-    return ret;
+    return ef->ops->release(ef);
 }
 
-#define DEF_EVENT_OPTS(event, file)                    \
-static const struct file_operations event##_##file = { \
-    .open = event##_##file##_open,                     \
-    .read = event##_##file##_read,                     \
-    .write = event##_##file##_write,                   \
-    .release = event##_##file##_release,               \
+static const struct file_operations event_fops = {
+    .open = event_open,
+    .read = event_read,
+    .write = event_write,
+    .release = event_release,
 };
 
-DEF_EVENT_OPTS(dutils, enable);
-//DEF_EVENT_OPTS(dutils, filter);
-//DEF_EVENT_OPTS(dutils, output);
-
-//DEF_EVENT_OPTS(txstat, enable);
-//DEF_EVENT_OPTS(txstat, filter);
-//DEF_EVENT_OPTS(txstat, output);
-
-static int dutils_test(struct dentry *parent)
+static int create_event_files(struct dentry *parent, struct event *event)
 {
-    struct dentry *dir;
-
-    dir = debugfs_create_dir("dutils", parent);
-    BUG_ON(dir == NULL);
-
-    BUG_ON(!debugfs_create_file("enable", 0644, dir, NULL, &dutils_enable));
-
+    while (*event->ev_file) {
+        BUG_ON(!debugfs_create_file((*event->ev_file)->name, 0644, parent,
+                                    *event->ev_file, &event_fops));
+        event->ev_file++;
+    }
     return 0;
 }
 
-static int
-event_create_dir(struct dentry *parent,
-         const char *event,
-         const struct file_operations *enable,
-         const struct file_operations *filter,
-         const struct file_operations *output)
+static int create_event_dir(struct dentry *parent, struct event *event)
 {
+    struct dentry *dir;
 
+    dir = debugfs_create_dir(event->name, parent);
+    BUG_ON(!dir);
+
+    return create_event_files(dir, event);
 }
 
 static struct dentry *wperf_lookup(void)
@@ -642,7 +713,7 @@ static struct dentry *wperf_lookup(void)
     while (*pdir)
         parent = debugfs_lookup(*pdir++, parent);
 
-    BUG_ON(parent == NULL);
+    BUG_ON(!parent);
 
     return parent;
 }
@@ -666,7 +737,7 @@ static int __init trace_wperf_events_init(void)
     }
 
     wperf_root = wperf_lookup();
-    dutils_test(wperf_root);
+    create_event_dir(wperf_root, &ev_dutils);
 
     return 0;
 }
