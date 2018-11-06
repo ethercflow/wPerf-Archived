@@ -539,6 +539,100 @@ static struct kretprobe *wperf_krps[] = {
     &__do_softirq_krp,
 };
 
+static int dutils_enable_open(struct inode *inode, struct file *file)
+{
+    int ret;
+
+    ret = disable_jprobe(&part_round_stats_jp);
+    if (ret < 0)
+        pr_warn("disable_jprobe: part_round_stats_jp failed");
+    pr_warn("disable_jprobe: part_round_stats_jp succeed");
+    return ret;
+}
+
+static ssize_t
+dutils_enable_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
+{
+
+}
+
+static ssize_t
+dutils_enable_write(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
+{
+    char *buf;
+    int err = -ENODEV;
+
+    if (cnt >= PAGE_SIZE)
+        return -EINVAL;
+
+    buf = (char *)__get_free_page(GFP_TEMPORARY);
+    if (!buf)
+        return -ENOMEM;
+
+    if (copy_from_user(buf, ubuf, cnt)) {
+        free_page((unsigned long) buf);
+        return -EFAULT;
+    }
+    buf[cnt] = '\0';
+
+    pr_warn("recv userland msg: %s\n", buf);
+
+    free_page((unsigned long) buf);
+
+    *ppos += cnt;
+
+    return cnt;
+}
+
+static int dutils_enable_release(struct inode *inode, struct file *file)
+{
+    int ret;
+
+    ret = enable_jprobe(&part_round_stats_jp);
+    if (ret < 0)
+        pr_warn("enable_jprobe: part_round_stats_jp failed");
+    pr_warn("enable_jprobe: part_round_stats_jp succeed");
+    return ret;
+}
+
+#define DEF_EVENT_OPTS(event, file)                    \
+static const struct file_operations event##_##file = { \
+    .open = event##_##file##_open,                     \
+    .read = event##_##file##_read,                     \
+    .write = event##_##file##_write,                   \
+    .release = event##_##file##_release,               \
+};
+
+DEF_EVENT_OPTS(dutils, enable);
+//DEF_EVENT_OPTS(dutils, filter);
+//DEF_EVENT_OPTS(dutils, output);
+
+//DEF_EVENT_OPTS(txstat, enable);
+//DEF_EVENT_OPTS(txstat, filter);
+//DEF_EVENT_OPTS(txstat, output);
+
+static int dutils_test(struct dentry *parent)
+{
+    struct dentry *dir;
+
+    dir = debugfs_create_dir("dutils", parent);
+    BUG_ON(dir == NULL);
+
+    BUG_ON(!debugfs_create_file("enable", 0644, dir, NULL, &dutils_enable));
+
+    return 0;
+}
+
+static int
+event_create_dir(struct dentry *parent,
+         const char *event,
+         const struct file_operations *enable,
+         const struct file_operations *filter,
+         const struct file_operations *output)
+{
+
+}
+
 static struct dentry *wperf_lookup(void)
 {
     struct dentry *parent = NULL;
@@ -572,6 +666,7 @@ static int __init trace_wperf_events_init(void)
     }
 
     wperf_root = wperf_lookup();
+    dutils_test(wperf_root);
 
     return 0;
 }
