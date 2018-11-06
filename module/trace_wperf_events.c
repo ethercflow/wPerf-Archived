@@ -558,6 +558,112 @@ static struct kretprobe *wperf_krps[] = {
     &__do_softirq_krp,
 };
 
+static int enable_open_generic(struct inode *inode, struct file *file)
+{
+    struct ev_file *ef = inode->i_private;
+
+    return ef->ops->open(ef);
+}
+
+static ssize_t enable_read_generic(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
+{
+    struct ev_file *ef = file_inode(filp)->i_private;
+
+    return ef->ops->read(ef);
+}
+
+static ssize_t enable_write_generic(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
+{
+    struct ev_file *ef;
+    unsigned long val;
+    int ret;
+
+    ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+    if (ret)
+        return ret;
+
+    switch (val) {
+    case 0:
+    case 1:
+        ret = -ENODEV;
+        ef = file_inode(filp)->i_private;
+        if (likely(ef))
+            ret = ef->ops->write(&val);
+        break;
+
+    default:
+        return -EINVAL;
+    }
+
+    *ppos += cnt;
+
+    return ret ? ret : cnt;
+}
+
+static int enable_release_generic(struct inode *inode, struct file *file)
+{
+    struct ev_file *ef = inode->i_private;
+
+    return ef->ops->release(ef);
+}
+
+static const struct file_operations enable_fops_generic = {
+    .open = enable_open_generic,
+    .read = enable_read_generic,
+    .write = enable_write_generic,
+    .release = enable_release_generic,
+};
+
+static int dutils_enable_open(void *data)
+{
+    pr_warn("dutils_enable_open");
+    return 0;
+}
+
+static int dutils_enable_read(void *data)
+{
+    pr_warn("dutils_enable_read");
+    return 0;
+}
+
+static int dutils_enable_write(void *data)
+{
+    denabled = *(bool*)data;
+
+    switch (denabled) {
+        case 0:
+            didx = 0;
+            disable_jprobe(&part_round_stats_jp);
+            pr_warn("echo 0 > disk_utils/disable");
+            break;
+        case 1:
+            enable_jprobe(&part_round_stats_jp);
+            pr_warn("echo 0 > disk_utils/enable");
+            break;
+    }
+
+    return 0;
+}
+
+static int dutils_enable_release(void *data)
+{
+    pr_warn("dutils_enable_release");
+    return 0;
+}
+
+static struct ev_ops ev_dutils_enable_ops = {
+    .open = &dutils_enable_open,
+    .read = &dutils_enable_read,
+    .write = &dutils_enable_write,
+    .release = &dutils_enable_release,
+};
+
+static struct ev_file ev_dutils_enable = {
+    .name = "enable",
+    .fops = &enable_fops_generic,
+    .ops = &ev_dutils_enable_ops,
+};
+
 static int filter_open_generic(struct inode *inode, struct file *file)
 {
     struct ev_file *ef = inode->i_private;
@@ -574,7 +680,7 @@ static ssize_t filter_read_generic(struct file *filp, char __user *ubuf, size_t 
 
 static ssize_t filter_write_generic(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
 {
-    struct ev_file *ef = file_inode(filp)->i_private;
+    struct ev_file *ef;
     char *buf;
     int err;
 
@@ -589,9 +695,10 @@ static ssize_t filter_write_generic(struct file *filp, const char __user *ubuf, 
         free_page((unsigned long) buf);
         return -EFAULT;
     }
-    buf[cnt] = '\0';
 
-    err = !ef->ops->write(buf);
+    buf[cnt] = '\0';
+    ef = file_inode(filp)->i_private;
+    err = ef->ops->write(buf);
     free_page((unsigned long)buf);
     if (err < 0)
         return -EINVAL;
@@ -688,12 +795,13 @@ static struct ev_file ev_dutils_filter = {
 };
 
 static struct ev_file *ev_dutils_files[] = {
+    &ev_dutils_enable,
     &ev_dutils_filter,
     NULL,
 };
 
 static struct event ev_dutils = {
-    .name = "dutils",
+    .name = "disk_utils",
     .ev_file = &ev_dutils_files[0],
 };
 
