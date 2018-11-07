@@ -567,9 +567,20 @@ static int enable_open_generic(struct inode *inode, struct file *file)
 
 static ssize_t enable_read_generic(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 {
+    const char set_to_char[2] = { '0', '1' };
     struct ev_file *ef = file_inode(filp)->i_private;
+    char buf[2];
+    int set = 0;
+    int ret;
 
-    return ef->ops->read(ef);
+    set = ef->ops->read(ef);
+
+    buf[0] = set_to_char[set];
+    buf[1] = '\n';
+
+    ret = simple_read_from_buffer(ubuf, cnt, ppos, buf, 2);
+
+    return ret;
 }
 
 static ssize_t enable_write_generic(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
@@ -622,8 +633,7 @@ static int dutils_enable_open(void *data)
 
 static int dutils_enable_read(void *data)
 {
-    pr_warn("dutils_enable_read");
-    return 0;
+    return denabled;
 }
 
 static int dutils_enable_write(void *data)
@@ -634,11 +644,9 @@ static int dutils_enable_write(void *data)
         case 0:
             didx = 0;
             disable_jprobe(&part_round_stats_jp);
-            pr_warn("echo 0 > disk_utils/disable");
             break;
         case 1:
             enable_jprobe(&part_round_stats_jp);
-            pr_warn("echo 0 > disk_utils/enable");
             break;
     }
 
