@@ -28,6 +28,8 @@ struct per_cpu_wperf_data {
 
 static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
 
+DEFINE_MUTEX(event_mutex);
+
 /*
  * FIXME: use assoc_array or sth else
  */
@@ -573,7 +575,9 @@ static ssize_t enable_read_generic(struct file *filp, char __user *ubuf, size_t 
     int set = 0;
     int ret;
 
+    mutex_lock(&event_mutex);
     set = ef->ops->read(ef);
+    mutex_unlock(&event_mutex);
 
     buf[0] = set_to_char[set];
     buf[1] = '\n';
@@ -597,11 +601,12 @@ static ssize_t enable_write_generic(struct file *filp, const char __user *ubuf, 
     case 0:
     case 1:
         ret = -ENODEV;
+        mutex_lock(&event_mutex);
         ef = file_inode(filp)->i_private;
+        mutex_unlock(&event_mutex);
         if (likely(ef))
             ret = ef->ops->write(&val);
         break;
-
     default:
         return -EINVAL;
     }
@@ -672,6 +677,24 @@ static struct ev_file ev_dutils_enable = {
     .ops = &ev_dutils_enable_ops,
 };
 
+int trace_seq_puts(struct trace_seq *s, const char *str)
+{
+    int len = strlen(str);
+
+    if (s->full)
+        return 0;
+
+    if (len > ((PAGE_SIZE - 1) - s->len)) {
+        s->full = 1;
+        return 0;
+    }
+
+    memcpy(s->buffer + s->len, str, len);
+    s->len += len;
+
+    return len;
+}
+
 static int filter_open_generic(struct inode *inode, struct file *file)
 {
     struct ev_file *ef = inode->i_private;
@@ -681,9 +704,32 @@ static int filter_open_generic(struct inode *inode, struct file *file)
 
 static ssize_t filter_read_generic(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 {
-    struct ev_file *ef = file_inode(filp)->i_private;
+    struct ev_file *ef;
+    struct trace_seq *s;
+    int r = -ENODEV;
 
-    return ef->ops->read(ef);
+    if (*ppos)
+        return 0;
+
+    s= kmalloc(sizeof(*s), GFP_KERNEL);
+
+    if (!s)
+        return -ENOMEM;
+
+    trace_seq_init(s);
+
+    mutex_lock(&event_mutex);
+    ef = file_inode(filp)->i_private;
+    if (ef)
+        ef->ops->read(s);
+    mutex_unlock(&event_mutex);
+
+    if (ef)
+        r = simple_read_from_buffer(ubuf, cnt, ppos, s->buffer, s->len);
+
+    kfree(s);
+
+    return r;
 }
 
 static ssize_t filter_write_generic(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
@@ -705,8 +751,12 @@ static ssize_t filter_write_generic(struct file *filp, const char __user *ubuf, 
     }
 
     buf[cnt] = '\0';
+
+    mutex_lock(&event_mutex);
     ef = file_inode(filp)->i_private;
     err = ef->ops->write(buf);
+    mutex_unlock(&event_mutex);
+
     free_page((unsigned long)buf);
     if (err < 0)
         return -EINVAL;
@@ -738,12 +788,19 @@ static int dutils_filter_open(void *data)
 
 static int dutils_filter_read(void *data)
 {
+    struct trace_seq *s = data;
     int i;
 
-    pr_warn("dutils_filter_read");
-    for (i = 0; i < didx; i++)
-        pr_warn("dnames[%d]: %s", i, dnames[i]);
+    if (!didx) {
+        trace_seq_puts(s, "none\n");
+        goto end;
+    }
 
+    for (i = 0; i < didx - 1; i++)
+        trace_seq_printf(s, "%s,", dnames[i]);
+    trace_seq_printf(s, "%s\n", dnames[i]);
+
+end:
     return 0;
 }
 
