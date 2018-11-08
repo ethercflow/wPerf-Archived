@@ -677,12 +677,17 @@ static int dutils_enable_read(void *data)
 
 static int dutils_enable_write(void *data)
 {
+    int i;
     denabled = *(bool*)data;
+
 
     switch (denabled) {
         case 0:
-            didx = 0;
             disable_jprobe(&part_round_stats_jp);
+            for (i = 0; i < didx; i++) {
+                dutils[i] = 0;
+            }
+            didx = 0;
             break;
         case 1:
             enable_jprobe(&part_round_stats_jp);
