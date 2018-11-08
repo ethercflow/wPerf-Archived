@@ -560,6 +560,45 @@ static struct kretprobe *wperf_krps[] = {
     &__do_softirq_krp,
 };
 
+#define DEF_FOPS_GENERIC(name)                             \
+static const struct file_operations name##_fops_generic = { \
+    .open    = name##_open_generic,                        \
+    .read    = name##_read_generic,                        \
+    .write   = name##_write_generic,                       \
+    .release = name##_release_generic,                     \
+};
+
+#define DEF_READ_GENERIC(name)                                                                     \
+static ssize_t name##_read_generic(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos) \
+{                                                                                                  \
+    struct ev_file *ef;                                                                            \
+    struct trace_seq *s;                                                                           \
+    int r = -ENODEV;                                                                               \
+                                                                                                   \
+    if (*ppos)                                                                                     \
+        return 0;                                                                                  \
+                                                                                                   \
+    s= kmalloc(sizeof(*s), GFP_KERNEL);                                                            \
+                                                                                                   \
+    if (!s)                                                                                        \
+        return -ENOMEM;                                                                            \
+                                                                                                   \
+    trace_seq_init(s);                                                                             \
+                                                                                                   \
+    mutex_lock(&event_mutex);                                                                      \
+    ef = file_inode(filp)->i_private;                                                              \
+    if (ef)                                                                                        \
+        ef->ops->read(s);                                                                          \
+    mutex_unlock(&event_mutex);                                                                    \
+                                                                                                   \
+    if (ef)                                                                                        \
+        r = simple_read_from_buffer(ubuf, cnt, ppos, s->buffer, s->len);                           \
+                                                                                                   \
+    kfree(s);                                                                                      \
+                                                                                                   \
+    return r;                                                                                      \
+}
+
 static int enable_open_generic(struct inode *inode, struct file *file)
 {
     struct ev_file *ef = inode->i_private;
@@ -623,12 +662,7 @@ static int enable_release_generic(struct inode *inode, struct file *file)
     return ef->ops->release(ef);
 }
 
-static const struct file_operations enable_fops_generic = {
-    .open = enable_open_generic,
-    .read = enable_read_generic,
-    .write = enable_write_generic,
-    .release = enable_release_generic,
-};
+DEF_FOPS_GENERIC(enable)
 
 static int dutils_enable_open(void *data)
 {
@@ -702,35 +736,7 @@ static int filter_open_generic(struct inode *inode, struct file *file)
     return ef->ops->open(ef);
 }
 
-static ssize_t filter_read_generic(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
-{
-    struct ev_file *ef;
-    struct trace_seq *s;
-    int r = -ENODEV;
-
-    if (*ppos)
-        return 0;
-
-    s= kmalloc(sizeof(*s), GFP_KERNEL);
-
-    if (!s)
-        return -ENOMEM;
-
-    trace_seq_init(s);
-
-    mutex_lock(&event_mutex);
-    ef = file_inode(filp)->i_private;
-    if (ef)
-        ef->ops->read(s);
-    mutex_unlock(&event_mutex);
-
-    if (ef)
-        r = simple_read_from_buffer(ubuf, cnt, ppos, s->buffer, s->len);
-
-    kfree(s);
-
-    return r;
-}
+DEF_READ_GENERIC(filter)
 
 static ssize_t filter_write_generic(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
 {
@@ -773,12 +779,7 @@ static int filter_release_generic(struct inode *inode, struct file *file)
     return ef->ops->release(ef);
 }
 
-static const struct file_operations filter_fops_generic = {
-    .open = filter_open_generic,
-    .read = filter_read_generic,
-    .write = filter_write_generic,
-    .release = filter_release_generic,
-};
+DEF_FOPS_GENERIC(filter)
 
 static int dutils_filter_open(void *data)
 {
@@ -859,9 +860,86 @@ static struct ev_file ev_dutils_filter = {
     .ops = &ev_dutils_filter_ops,
 };
 
+static int output_open_generic(struct inode *inode, struct file *file)
+{
+    struct ev_file *ef = inode->i_private;
+
+    return ef->ops->release(ef);
+}
+
+DEF_READ_GENERIC(output)
+
+static ssize_t output_write_generic(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
+{
+    return -EPERM;
+}
+
+static int output_release_generic(struct inode *inode, struct file *file)
+{
+    struct ev_file *ef = inode->i_private;
+
+    return ef->ops->release(ef);
+}
+
+
+DEF_FOPS_GENERIC(output)
+
+static int dutils_output_open(void *data)
+{
+    pr_warn("dutils_output_open");
+    return 0;
+}
+
+static int dutils_output_read(void *data)
+{
+    struct trace_seq *s = data;
+    int i = 0;
+
+    disable_jprobe(&part_round_stats_jp);
+
+    if (!didx) {
+        trace_seq_puts(s, "none\n");
+        goto end;
+    }
+
+    for (i = 0; i < didx - 1; i++)
+        trace_seq_printf(s, "%s=%ld,", dnames[i], dutils[i]);
+    trace_seq_printf(s, "%s=%ld\n", dnames[i], dutils[i]);
+
+end:
+    if (denabled)
+        enable_jprobe(&part_round_stats_jp);
+    return 0;
+}
+
+static int dutils_output_write(void *data)
+{
+    return -EPERM;
+}
+
+static int dutils_output_release(void *data)
+{
+    pr_warn("dutils_output_open");
+    return 0;
+}
+
+static struct ev_ops ev_dutils_output_ops = {
+    .open = &dutils_output_open,
+    .read = &dutils_output_read,
+    .write = &dutils_output_write,
+    .release = &dutils_output_release,
+};
+
+static struct ev_file ev_dutils_output = {
+    .name = "output",
+    .fops = &output_fops_generic,
+    .ops = &ev_dutils_output_ops,
+};
+
 static struct ev_file *ev_dutils_files[] = {
     &ev_dutils_enable,
     &ev_dutils_filter,
+    &ev_dutils_output,
     NULL,
 };
 
