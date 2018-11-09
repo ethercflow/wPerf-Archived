@@ -4,6 +4,7 @@
 #include <linux/genhd.h>
 #include <linux/jiffies.h>
 #include <linux/debugfs.h>
+#include <linux/bitmap.h>
 
 enum {
     HARDIRQ = NR_SOFTIRQS + 1,
@@ -30,21 +31,21 @@ static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
 
 DEFINE_MUTEX(event_mutex);
 
+DECLARE_BITMAP(filter, PID_MAX_LIMIT);
+
 /*
- * FIXME: use assoc_array or sth else
+ * FIXME: use a better data structure
  */
 struct tx_stat {
-    #define MAX_PID_NUM    65535
-    long bytes[MAX_PID_NUM];
+    long bytes;
 };
 
-static struct tx_stat tx_stat;
+static struct tx_stat tx_stats[PID_MAX_LIMIT];
+static bool tx_enabled = false;
 
 struct ev_ops {
-    int (*open)(void *data);
     int (*read)(void *data);
     int (*write)(void *data);
-    int (*release)(void *data);
 };
 
 struct ev_file {
@@ -57,6 +58,11 @@ struct event {
     char *name;
     struct ev_file **ev_file;
 };
+
+struct futex_hash_bucket;
+struct futex_q;
+struct msghdr;
+struct socket;
 
 #define CREATE_TRACE_POINTS
 #include "trace_wperf_events.h"
@@ -451,7 +457,8 @@ DECL_CMN_JRP(do_exit);
 static int on_tcp_sendmsg_ent(struct kiocb *iocb, struct sock *sk,
                               struct msghdr *msg, size_t size)
 {
-    tx_stat.bytes[current->pid] += size;
+    if (test_bit(current->pid, filter))
+        tx_stats[current->pid].bytes += size;
     jprobe_return();
     return 0;
 }
@@ -460,7 +467,8 @@ DECL_CMN_JRP(tcp_sendmsg);
 
 static int on_udp_sendmsg_ent(struct sock *sk, struct msghdr *msg, size_t len)
 {
-    tx_stat.bytes[current->pid] += len;
+    if (test_bit(current->pid, filter))
+        tx_stats[current->pid].bytes += len;
     jprobe_return();
     return 0;
 }
@@ -473,7 +481,8 @@ DECL_CMN_JRP(udp_sendmsg);
 static int on_tcp_sendpage_ent(struct sock *sk, struct page *page, int offset,
                                size_t size, int flags)
 {
-    tx_stat.bytes[current->pid] += size;
+    if (test_bit(current->pid, filter))
+        tx_stats[current->pid].bytes += size;
     jprobe_return();
     return 0;
 }
@@ -483,7 +492,8 @@ DECL_CMN_JRP(tcp_sendpage);
 static int on_udp_sendpage_ent(struct sock *sk, struct page *page, int offset,
                                size_t size, int flags)
 {
-    tx_stat.bytes[current->pid] += size;
+    if (test_bit(current->pid, filter))
+        tx_stats[current->pid].bytes += size;
     jprobe_return();
     return 0;
 }
@@ -495,7 +505,8 @@ DECL_CMN_JRP(udp_sendpage);
  */
 static int on_sock_sendmsg_ent(struct socket *sock, struct msghdr *msg, size_t size)
 {
-    tx_stat.bytes[current->pid] += size;
+    if (test_bit(current->pid, filter))
+        tx_stats[current->pid].bytes += size;
     jprobe_return();
     return 0;
 }
@@ -562,10 +573,8 @@ static struct kretprobe *wperf_krps[] = {
 
 #define DEF_FOPS_GENERIC(name)                             \
 static const struct file_operations name##_fops_generic = { \
-    .open    = name##_open_generic,                        \
     .read    = name##_read_generic,                        \
     .write   = name##_write_generic,                       \
-    .release = name##_release_generic,                     \
 };
 
 #define DEF_READ_GENERIC(name)                                                                     \
@@ -597,13 +606,6 @@ static ssize_t name##_read_generic(struct file *filp, char __user *ubuf, size_t 
     kfree(s);                                                                                      \
                                                                                                    \
     return r;                                                                                      \
-}
-
-static int enable_open_generic(struct inode *inode, struct file *file)
-{
-    struct ev_file *ef = inode->i_private;
-
-    return ef->ops->open(ef);
 }
 
 static ssize_t enable_read_generic(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
@@ -655,20 +657,7 @@ static ssize_t enable_write_generic(struct file *filp, const char __user *ubuf, 
     return ret ? ret : cnt;
 }
 
-static int enable_release_generic(struct inode *inode, struct file *file)
-{
-    struct ev_file *ef = inode->i_private;
-
-    return ef->ops->release(ef);
-}
-
 DEF_FOPS_GENERIC(enable)
-
-static int dutils_enable_open(void *data)
-{
-    pr_warn("dutils_enable_open");
-    return 0;
-}
 
 static int dutils_enable_read(void *data)
 {
@@ -679,7 +668,6 @@ static int dutils_enable_write(void *data)
 {
     int i;
     denabled = *(bool*)data;
-
 
     switch (denabled) {
         case 0:
@@ -697,17 +685,9 @@ static int dutils_enable_write(void *data)
     return 0;
 }
 
-static int dutils_enable_release(void *data)
-{
-    pr_warn("dutils_enable_release");
-    return 0;
-}
-
 static struct ev_ops ev_dutils_enable_ops = {
-    .open = &dutils_enable_open,
     .read = &dutils_enable_read,
     .write = &dutils_enable_write,
-    .release = &dutils_enable_release,
 };
 
 static struct ev_file ev_dutils_enable = {
@@ -734,11 +714,10 @@ int trace_seq_puts(struct trace_seq *s, const char *str)
     return len;
 }
 
-static int filter_open_generic(struct inode *inode, struct file *file)
+static inline void trace_seq_nl(struct trace_seq *s)
 {
-    struct ev_file *ef = inode->i_private;
-
-    return ef->ops->open(ef);
+    BUG_ON(s->len- 1 <= 0);
+    s->buffer[s->len - 1] = '\n';
 }
 
 DEF_READ_GENERIC(filter)
@@ -777,20 +756,7 @@ static ssize_t filter_write_generic(struct file *filp, const char __user *ubuf, 
     return cnt;
 }
 
-static int filter_release_generic(struct inode *inode, struct file *file)
-{
-    struct ev_file *ef = inode->i_private;
-
-    return ef->ops->release(ef);
-}
-
 DEF_FOPS_GENERIC(filter)
-
-static int dutils_filter_open(void *data)
-{
-    pr_warn("dutils_filter_open");
-    return 0;
-}
 
 static int dutils_filter_read(void *data)
 {
@@ -846,17 +812,9 @@ static int dutils_filter_write(void *data)
     return 0;
 }
 
-static int dutils_filter_release(void *data)
-{
-    pr_warn("dutils_filter_release");
-    return 0;
-}
-
 static struct ev_ops ev_dutils_filter_ops = {
-    .open = &dutils_filter_open,
     .read = &dutils_filter_read,
     .write = &dutils_filter_write,
-    .release = &dutils_filter_release,
 };
 
 static struct ev_file ev_dutils_filter = {
@@ -865,13 +823,6 @@ static struct ev_file ev_dutils_filter = {
     .ops = &ev_dutils_filter_ops,
 };
 
-static int output_open_generic(struct inode *inode, struct file *file)
-{
-    struct ev_file *ef = inode->i_private;
-
-    return ef->ops->release(ef);
-}
-
 DEF_READ_GENERIC(output)
 
 static ssize_t output_write_generic(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
@@ -879,21 +830,7 @@ static ssize_t output_write_generic(struct file *filp, const char __user *ubuf, 
     return -EPERM;
 }
 
-static int output_release_generic(struct inode *inode, struct file *file)
-{
-    struct ev_file *ef = inode->i_private;
-
-    return ef->ops->release(ef);
-}
-
-
 DEF_FOPS_GENERIC(output)
-
-static int dutils_output_open(void *data)
-{
-    pr_warn("dutils_output_open");
-    return 0;
-}
 
 static int dutils_output_read(void *data)
 {
@@ -922,17 +859,9 @@ static int dutils_output_write(void *data)
     return -EPERM;
 }
 
-static int dutils_output_release(void *data)
-{
-    pr_warn("dutils_output_open");
-    return 0;
-}
-
 static struct ev_ops ev_dutils_output_ops = {
-    .open = &dutils_output_open,
     .read = &dutils_output_read,
     .write = &dutils_output_write,
-    .release = &dutils_output_release,
 };
 
 static struct ev_file ev_dutils_output = {
@@ -951,6 +880,178 @@ static struct ev_file *ev_dutils_files[] = {
 static struct event ev_dutils = {
     .name = "disk_utils",
     .ev_file = &ev_dutils_files[0],
+};
+
+static inline void disable_tx_stat_probes(void)
+{
+    disable_jprobe(&tcp_sendmsg_jp);
+    disable_jprobe(&udp_sendmsg_jp);
+    disable_jprobe(&tcp_sendpage_jp);
+    disable_jprobe(&udp_sendpage_jp);
+    disable_jprobe(&sock_sendmsg_jp);
+}
+
+static inline void enable_tx_stat_probes(void)
+{
+    enable_jprobe(&tcp_sendmsg_jp);
+    enable_jprobe(&udp_sendmsg_jp);
+    enable_jprobe(&tcp_sendpage_jp);
+    enable_jprobe(&udp_sendpage_jp);
+    enable_jprobe(&sock_sendmsg_jp);
+}
+
+static int tx_stats_enable_read(void *data)
+{
+    return tx_enabled;
+}
+
+static int tx_stats_enable_write(void *data)
+{
+    tx_enabled = *(bool*)data;
+
+    switch (tx_enabled) {
+        case 0:
+            disable_tx_stat_probes();
+            bitmap_zero(filter, PID_MAX_LIMIT);
+            break;
+        case 1:
+            enable_tx_stat_probes();
+            break;
+    }
+
+    return 0;
+}
+
+static struct ev_ops ev_tx_stats_enable_ops = {
+    .read = &tx_stats_enable_read,
+    .write = &tx_stats_enable_write,
+};
+
+static struct ev_file ev_tx_stats_enable = {
+    .name = "enable",
+    .fops = &enable_fops_generic,
+    .ops = &ev_tx_stats_enable_ops,
+};
+
+static int tx_stats_filter_read(void *data)
+{
+    struct trace_seq *s = data;
+    int m, n;
+
+    m = 0;
+    for_each_set_bit(n, filter, PID_MAX_LIMIT) {
+        trace_seq_printf(s, "%d,", n);
+        ++m;
+    }
+
+    if (m == 0)
+        trace_seq_puts(s, "none\n");
+    else
+        trace_seq_nl(s);
+
+    return 0;
+}
+
+static int tx_stats_filter_write(void *data)
+{
+    char *buf, *s, *token;
+    unsigned long pid;
+    int ret;
+
+    buf = kstrdup(data, GFP_KERNEL);
+    if (buf == NULL)
+        return -ENOMEM;
+    s = strstrip(buf);
+
+    disable_tx_stat_probes();
+
+    while (1) {
+        token = strsep(&s, ",");
+        if (token == NULL)
+            break;
+
+        if (*token == '\0')
+            continue;
+
+        ret = kstrtoul(token, 10, &pid);
+        if (ret) {
+            goto err;
+        }
+
+        bitmap_set(filter, pid, 1);
+    }
+
+    if (tx_enabled)
+        enable_tx_stat_probes();
+
+    return 0;
+
+err:
+    bitmap_zero(filter, PID_MAX_LIMIT);
+    return -EINVAL;
+}
+
+static struct ev_ops ev_tx_stats_filter_ops = {
+    .read = &tx_stats_filter_read,
+    .write = &tx_stats_filter_write,
+};
+
+static struct ev_file ev_tx_stats_filter = {
+    .name = "filter",
+    .fops = &filter_fops_generic,
+    .ops = &ev_tx_stats_filter_ops,
+};
+
+static int tx_stats_output_read(void *data)
+{
+    struct trace_seq *s = data;
+    int m, n;
+
+    disable_tx_stat_probes();
+
+    m = 0;
+    for_each_set_bit(n, filter, PID_MAX_LIMIT) {
+        trace_seq_printf(s, "%d=%ld,", n, tx_stats[n].bytes);
+        ++m;
+    }
+
+    if (m == 0)
+        trace_seq_puts(s, "none\n");
+    else
+        trace_seq_nl(s);
+
+    if (tx_enabled)
+        enable_tx_stat_probes();
+
+    return 0;
+}
+
+static int tx_stats_output_write(void *data)
+{
+    return -EPERM;
+}
+
+static struct ev_ops ev_tx_stats_output_ops = {
+    .read = &tx_stats_output_read,
+    .write = &tx_stats_output_write,
+};
+
+static struct ev_file ev_tx_stats_output = {
+    .name = "output",
+    .fops = &output_fops_generic,
+    .ops = &ev_tx_stats_output_ops,
+};
+
+static struct ev_file *ev_tx_stats_files[] = {
+    &ev_tx_stats_enable,
+    &ev_tx_stats_filter,
+    &ev_tx_stats_output,
+    NULL,
+};
+
+static struct event ev_tx_stats = {
+    .name = "tx_stat",
+    .ev_file = &ev_tx_stats_files[0],
 };
 
 static int create_event_files(struct dentry *parent, struct event *event)
@@ -1005,8 +1106,12 @@ static int __init trace_wperf_events_init(void)
         return ret;
     }
 
+    disable_jprobe(&part_round_stats_jp);
+    disable_tx_stat_probes();
+
     wperf_root = wperf_lookup();
     create_event_dir(wperf_root, &ev_dutils);
+    create_event_dir(wperf_root, &ev_tx_stats);
 
     return 0;
 }
