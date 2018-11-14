@@ -96,22 +96,24 @@ TRACE_EVENT(try_to_wake_up,
 
 TRACE_EVENT(__do_softirq_ret,
 
-    TP_PROTO(int type, u64 begin_time),
+    TP_PROTO(int type, u64 begin_time, u64 end_time),
 
-    TP_ARGS(type, begin_time),
+    TP_ARGS(type, begin_time, end_time),
 
     TP_STRUCT__entry(
         __field(int, type)
         __field(u64, begin_time)
+        __field(u64, end_time)
     ),
 
     TP_fast_assign(
         __entry->type = type;
         __entry->begin_time = begin_time;
+        __entry->end_time = end_time;
     ),
 
-    TP_printk("type=%d, begin_time=%llu",
-              __entry->type, __entry->begin_time)
+    TP_printk("type=%d, begin_time=%llu, end_time=%llu",
+              __entry->type, __entry->begin_time, __entry->end_time)
 );
 
 DECLARE_EVENT_CLASS(common_event,

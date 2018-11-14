@@ -24,7 +24,7 @@ static struct dentry *wperf_root = NULL;
 
 struct per_cpu_wperf_data {
     int softirqs_nr;
-    int softirq_btime; // begin time
+    u64 softirq_btime; // begin time
 };
 
 static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
@@ -306,8 +306,8 @@ static int on___do_softirq_ret(struct kretprobe_instance *ri, struct pt_regs *re
     struct per_cpu_wperf_data *data;
 
     data = &__get_cpu_var(wperf_cpu_data);
+    trace___do_softirq_ret(1, data->softirq_btime, rdtsc_ordered()); /* FIXME */
 
-    trace___do_softirq_ret(1, data->softirq_btime); /* FIXME */
     return 0;
 }
 
@@ -404,7 +404,7 @@ DECL_CMN_JRP(do_futex);
  */
 static void on_journal_end_buffer_io_sync_ent(struct buffer_head *bh, int uptodate)
 {
-    trace_journal_end_buffer_io_sync(in_serving_softirq() >0);
+    trace_journal_end_buffer_io_sync(in_serving_softirq() > 0);
     jprobe_return();
 }
 
