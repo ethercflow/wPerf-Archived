@@ -24,7 +24,7 @@ static struct dentry *wperf_root = NULL;
 
 struct per_cpu_wperf_data {
     int softirqs_nr;
-    int softirq_btime; // begin time
+    u64 softirq_btime; // begin time
 };
 
 static DEFINE_PER_CPU(struct per_cpu_wperf_data, wperf_cpu_data);
