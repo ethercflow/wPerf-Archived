@@ -17,7 +17,9 @@ int main(int argc, char *argv[])
 
     parse_opts(&conf, argc, argv);
 
-    setup_instances(basedir, &instances[0]);
+    setup_instances(&conf, basedir, &instances[0]);
+
+    record(&conf, uv_default_loop());
 
     return 0;
 }
