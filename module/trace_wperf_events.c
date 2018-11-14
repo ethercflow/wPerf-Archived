@@ -306,7 +306,7 @@ static int on___do_softirq_ret(struct kretprobe_instance *ri, struct pt_regs *re
     struct per_cpu_wperf_data *data;
 
     data = &__get_cpu_var(wperf_cpu_data);
-    trace___do_softirq_ret(1, data->softirq_btime, rdtsc_ordered()); /* FIXME */
+    trace___do_softirq_ret(0, data->softirq_btime, rdtsc_ordered()); /* FIXME */
 
     return 0;
 }
