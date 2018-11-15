@@ -4,50 +4,48 @@
 
 void on_read(uv_fs_t *req);
 
-uv_fs_t open_req;
-uv_fs_t read_req;
-uv_fs_t write_req;
-uv_timer_t timer_req;
-
-static char buffer[1024];
-
-static uv_buf_t iov;
-static int timeout = 0;
-
 void on_write(uv_fs_t *req)
 {
+    struct ctx *ctx;
+
+    ctx = container_of(req, struct ctx, req);
+
     if (req->result < 0) {
         fprintf(stderr, "Write error: %s\n", uv_strerror((int)req->result));
     }
     else {
-        if (!timeout)
-            uv_fs_read(uv_default_loop(), &read_req, open_req.result, &iov, 1, -1, on_read);
+        if (!ctx->expired)
+            uv_fs_read(ctx->loop, &ctx->req.read, ctx->fin, &ctx->iov, 1, -1, on_read);
     }
 }
 
 void on_read(uv_fs_t *req)
 {
+    struct ctx *ctx;
+
+    ctx = container_of(req, struct ctx, req);
+
     if (req->result < 0) {
         fprintf(stderr, "Read error: %s\n", uv_strerror(req->result));
     } else if (req->result == 0) {
-        uv_fs_t close_req;
-        // synchronous
-        uv_fs_close(uv_default_loop(), &close_req, open_req.result, NULL);
+        fprintf(stderr, "should close\n");
     } else if (req->result > 0) {
-        iov.len = req->result;
-        uv_fs_write(uv_default_loop(), &write_req, 1, &iov, 1, -1, on_write);
+        ctx->iov.len = req->result;
+        uv_fs_write(ctx->loop, &ctx->req.write, 1, &ctx->iov, 1, -1, on_write);
     }
 }
 
 void on_open(uv_fs_t *req)
 {
-    // The request passed to the callback is the same as the one the call setup
-    // function was passed.
-    assert(req == &open_req);
+    struct ctx *ctx;
+
+    ctx = container_of(req, struct ctx, req);
+
     if (req->result >= 0) {
-        iov = uv_buf_init(buffer, sizeof(buffer));
-        uv_fs_read(uv_default_loop(), &read_req, req->result,
-                   &iov, 1, -1, on_read);
+        ctx->fin = req->result;
+        ctx->iov = uv_buf_init(ctx->buf, 4096);
+        uv_fs_read(ctx->loop, &ctx->req.read, ctx->fin,
+                   &ctx->iov, 1, -1, on_read);
     } else {
         fprintf(stderr, "error opening file: %s\n", uv_strerror((int)req->result));
     }
@@ -69,17 +67,23 @@ void setup_instances(struct config *cf, const char *base, const char **p)
 }
 
 static void timer_expire(uv_timer_t *handle) {
-    timeout = 1;
+    struct ctx *ctx;
+
+    ctx = container_of(handle, struct ctx, expire_handler);
+    ctx->expired = true;
 }
 
 void record(struct config *cf, uv_loop_t *loop)
 {
-    uv_fs_open(loop, &open_req, "/sys/kernel/debug/tracing/instances/switch/trace_pipe", O_RDONLY, 0, on_open);
-    uv_timer_init(loop, &timer_req);
-    uv_timer_start(&timer_req, timer_expire, 10000, 0);
+    struct ctx ctx;
+    ctx.loop = loop;
+
+    uv_fs_open(loop, &ctx.req.open, "/sys/kernel/debug/tracing/instances/switch/trace_pipe", O_RDONLY, 0, on_open);
+    uv_timer_init(loop, &ctx.expire_handler);
+    uv_timer_start(&ctx.expire_handler, timer_expire, 10000, 0);
     uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 
-    uv_fs_req_cleanup(&open_req);
-    uv_fs_req_cleanup(&read_req);
-    uv_fs_req_cleanup(&write_req);
+    uv_fs_req_cleanup(&ctx.req.open);
+    uv_fs_req_cleanup(&ctx.req.read);
+    uv_fs_req_cleanup(&ctx.req.write);
 }

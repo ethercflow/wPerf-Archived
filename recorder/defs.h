@@ -3,15 +3,27 @@
 
 #include <uv.h>
 #include <assert.h>
+#include <stdbool.h>
+
+#define container_of(ptr, type, field)                                        \
+  ((type *) ((char *) (ptr) - ((char *) &((type *) 0)->field)))
 
 struct config {
 };
 
 struct ctx {
     uv_loop_t *loop;
-    uv_fs_t open_req;
-    uv_fs_t read_req;
-    uv_fs_t write_req;
+    union {
+        uv_fs_t open;
+        uv_fs_t read;
+        uv_fs_t write;
+    } req;
+    uv_file fin;
+    uv_file fout;
+    uv_timer_t expire_handler;
+    bool expired;
+    uv_buf_t iov;
+    char buf[4096];
 };
 
 struct recoder {
