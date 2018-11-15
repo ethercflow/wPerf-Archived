@@ -12,14 +12,17 @@ static const char *instances[] = { "switch", "softirq", "wait", NULL };
 int main(int argc, char *argv[])
 {
     struct config conf;
+    int err;
 
     memset(&conf, 0, sizeof(conf));
 
     parse_opts(&conf, argc, argv);
 
-    setup_instances(&conf, basedir, &instances[0]);
+    setup_event_instances(&conf, basedir, &instances[0]);
 
-    record(&conf, uv_default_loop());
+    err = recorder_run(&conf, uv_default_loop());
+    if (err)
+        exit(1);
 
     return 0;
 }

@@ -3,36 +3,48 @@
 
 #include <uv.h>
 #include <assert.h>
+#include <stdlib.h>
 #include <stdbool.h>
+
+#define MAX_PATH_LEN    100
 
 #define container_of(ptr, type, field)                                        \
   ((type *) ((char *) (ptr) - ((char *) &((type *) 0)->field)))
 
 struct config {
+    char **instances_in;
+    char **instances_out;
+    int instances_num;
+    pid_t *pids;
+    uint64_t timeout;
+    char *output_dir;
 };
 
-struct ctx {
+struct recorder;
+
+struct event_ctx {
     uv_loop_t *loop;
+    struct recorder *recorder;
     union {
         uv_fs_t open;
         uv_fs_t read;
         uv_fs_t write;
+        uv_fs_t close;
     } req;
-    uv_file fin;
-    uv_file fout;
+    uv_file fd[2];
+    uv_buf_t iov;
+};
+
+struct recorder {
+    uv_loop_t *loop;
+    struct config cf;
     uv_timer_t expire_handler;
     bool expired;
-    uv_buf_t iov;
-    char buf[4096];
+    struct event_ctx *events;
 };
 
-struct recoder {
-    struct config cf;
-    struct ctx *ctxs;
-    uv_loop_t *loop;
-};
-
-void setup_instances(struct config *cf, const char *base, const char **p);
-void record(struct config *cf, uv_loop_t *loop);
+void setup_event_instances(struct config *cf, const char *base, const char **p);
+int recorder_run(struct config *cf, uv_loop_t *loop);
+int record_events(struct recorder *recorder);
 
 #endif // __DEFS_H_
