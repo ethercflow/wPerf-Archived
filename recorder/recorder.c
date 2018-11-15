@@ -7,10 +7,12 @@ void on_read(uv_fs_t *req);
 uv_fs_t open_req;
 uv_fs_t read_req;
 uv_fs_t write_req;
+uv_timer_t timer_req;
 
 static char buffer[1024];
 
 static uv_buf_t iov;
+static int timeout = 0;
 
 void on_write(uv_fs_t *req)
 {
@@ -18,7 +20,8 @@ void on_write(uv_fs_t *req)
         fprintf(stderr, "Write error: %s\n", uv_strerror((int)req->result));
     }
     else {
-        uv_fs_read(uv_default_loop(), &read_req, open_req.result, &iov, 1, -1, on_read);
+        if (!timeout)
+            uv_fs_read(uv_default_loop(), &read_req, open_req.result, &iov, 1, -1, on_read);
     }
 }
 
@@ -65,9 +68,15 @@ void setup_instances(struct config *cf, const char *base, const char **p)
     }
 }
 
+static void timer_expire(uv_timer_t *handle) {
+    timeout = 1;
+}
+
 void record(struct config *cf, uv_loop_t *loop)
 {
     uv_fs_open(loop, &open_req, "/sys/kernel/debug/tracing/instances/switch/trace_pipe", O_RDONLY, 0, on_open);
+    uv_timer_init(loop, &timer_req);
+    uv_timer_start(&timer_req, timer_expire, 10000, 0);
     uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 
     uv_fs_req_cleanup(&open_req);
