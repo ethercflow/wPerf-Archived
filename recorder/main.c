@@ -38,7 +38,7 @@ static void parse_opts(struct config *cf, int argc, char **argv)
      * Default val
      */
     cf->output_dir = "/tmp/wperf";
-    cf->timeout = 10000;
+    cf->timeout = 90000;
 
     while (-1 != (opt = getopt(argc, argv, "p:P:hd:n:o:"))) {
         switch (opt) {
@@ -46,7 +46,7 @@ static void parse_opts(struct config *cf, int argc, char **argv)
                 cf->pid_list = optarg;
                 break;
             case 'P':
-                if (1 != sscanf(optarg, "%llu", &cf->timeout)) {
+                if (1 != sscanf(optarg, "%" PRIu64, &cf->timeout)) {
                     fprintf(stderr, "bad period: %s", optarg);
                     usage();
                 }
@@ -64,8 +64,6 @@ static void parse_opts(struct config *cf, int argc, char **argv)
                 usage();
         }
     }
-
-    usage();
 }
 
 static void usage(void)

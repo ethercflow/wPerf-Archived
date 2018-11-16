@@ -35,6 +35,13 @@ static inline char *get_instance_output(char *dir, const char *base, const char 
     return strdup(dir);
 }
 
+static inline void cleanup(struct event_ctx *event)
+{
+    uv_fs_close(event->loop, &event->req.close, event->fd[0], NULL);
+    uv_fs_fsync(event->loop, &event->req.close, event->fd[1], NULL);
+    uv_fs_close(event->loop, &event->req.close, event->fd[1], NULL);
+}
+
 static void on_write(uv_fs_t *req)
 {
     struct event_ctx *event;
@@ -43,18 +50,19 @@ static void on_write(uv_fs_t *req)
 
     if (req->result < 0) {
         fprintf(stderr, "Write error: %s\n", uv_strerror((int)req->result));
-        return;
+        goto cleanup;
     }
 
     if (event->recorder->expired) {
-        /* FIXME */
-        uv_fs_close(event->loop, &event->req.close, event->fd[0], NULL);
-        uv_fs_close(event->loop, &event->req.close, event->fd[1], NULL);
-        return;
+        goto cleanup;
     }
 
     uv_fs_read(event->loop, &event->req.read, event->fd[0],
                &event->iov, 1, -1, on_read);
+    return;
+
+cleanup:
+    cleanup(event);
 }
 
 static void on_read(uv_fs_t *req)
@@ -63,14 +71,27 @@ static void on_read(uv_fs_t *req)
 
     event = container_of(req, struct event_ctx, req);
 
+    if (event->recorder->expired)
+        goto cleanup;
+
     if (req->result <= 0) {
-        fprintf(stderr, "Read error: %s\n", uv_strerror(req->result));
+        if (req->result != UV_EAGAIN) {
+            fprintf(stderr, "Read error: %s\n", uv_strerror(req->result));
+            goto cleanup;
+        }
+
+        uv_fs_read(event->loop, &event->req.read, event->fd[0],
+                   &event->iov, 1, -1, on_read);
         return;
     }
 
     event->iov.len = req->result;
     uv_fs_write(event->loop, &event->req.write, event->fd[1],
                 &event->iov, 1, -1, on_write);
+    return;
+
+cleanup:
+    cleanup(event);
 }
 
 static void on_open(uv_fs_t *req)
@@ -125,7 +146,7 @@ int record_events(struct recorder *recorder)
                                   cf.instances_out[i],
                                   O_CREAT | O_RDWR, 0644, NULL);
         uv_fs_open(event->loop, &event->req.open, cf.instances_in[i],
-                   O_RDONLY, 0, on_open);
+                   O_RDONLY|O_NONBLOCK, 0, on_open);
     }
 
     return 0;
