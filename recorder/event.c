@@ -24,14 +24,14 @@ static inline void create_instance_output(char *dir, uv_fs_t *req,
 {
     int r;
 
-    snprintf(dir, MAX_PATH_LEN, "/tmp/wperf/%s", name);
+    snprintf(dir, MAX_PATH_LEN, "/%s/%s", base, name);
     r = uv_fs_mkdir(NULL, req, dir, 0755, NULL);
     assert(r == 0 || r == UV_EEXIST);
 }
 
 static inline char *get_instance_output(char *dir, const char *base, const char *name)
 {
-    snprintf(dir, MAX_PATH_LEN, "/tmp/wperf/%s/output", name);
+    snprintf(dir, MAX_PATH_LEN, "%s/%s/output", base, name);
     return strdup(dir);
 }
 
@@ -137,23 +137,16 @@ void setup_event_instances(struct config *cf, const char *base, const char **p)
     uv_fs_t req;
     int i, r;
 
-    cf->instances_num = 3;
-    cf->instances_in = malloc(sizeof(char*) * 3);
-    cf->instances_out = malloc(sizeof(char*) * 3);
-    cf->output_dir = "/tmp/wperf/";
-    cf->timeout = 10000;
-
     r = uv_fs_mkdir(NULL, &req, cf->output_dir, 0755, NULL);
     assert(r == 0 || r == UV_EEXIST);
 
     for (i = 0; i < cf->instances_num; i++) {
-    create_instance_dir(dir, &req, base, *p);
-    create_instance_output(dir, &req, base, *p);
-    cf->instances_in[i] = get_instance_input(dir, base, *p);
-        cf->instances_out[i] = get_instance_output(dir, base, *p);
+        create_instance_dir(dir, &req, base, *p);
+        create_instance_output(dir, &req, cf->output_dir, *p);
+        cf->instances_in[i] = get_instance_input(dir, base, *p);
+        cf->instances_out[i] = get_instance_output(dir, cf->output_dir, *p);
         p++;
     }
 
     uv_fs_req_cleanup(&req);
 }
-

@@ -5,6 +5,9 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 #define MAX_PATH_LEN    100
 
@@ -15,9 +18,11 @@ struct config {
     char **instances_in;
     char **instances_out;
     int instances_num;
-    pid_t *pids;
+    const char *pid_list;
+    const char *disk_list;
+    const char *nic_list;
     uint64_t timeout;
-    char *output_dir;
+    const char *output_dir;
 };
 
 struct recorder;
