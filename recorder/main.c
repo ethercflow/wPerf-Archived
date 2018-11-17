@@ -1,6 +1,7 @@
 #include "defs.h"
 
-static void parse_opts(struct config *conf, int argc, char **argv);
+static void init_config(struct config *cf);
+static void parse_opts(struct config *cf, int argc, char **argv);
 static void usage(void);
 
 static const char *progname = __FILE__;  /* Reset in main(). */
@@ -11,10 +12,7 @@ int main(int argc, char *argv[])
     int err;
 
     progname = argv[0];
-    memset(&conf, 0, sizeof(conf));
-    conf.instances_num = instances_num;
-    conf.instances_in = malloc(sizeof(char*) * instances_num);
-    conf.instances_out = malloc(sizeof(char*) * instances_num);
+    init_config(&conf);
     parse_opts(&conf, argc, argv);
 
     err = recorder_run(&conf, uv_default_loop());
@@ -24,22 +22,21 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+static void init_config(struct config *cf)
+{
+    memset(cf, 0, sizeof(*cf));
+
+    cf->instances_num = instances_num;
+    cf->instances_in = malloc(sizeof(char*) * instances_num);
+    cf->instances_out = malloc(sizeof(char*) * instances_num);
+
+    cf->output_dir = "/tmp/wperf";
+    cf->timeout = 90000;
+}
+
 static void parse_opts(struct config *cf, int argc, char **argv)
 {
     int opt;
-
-    /*
-     * Default val
-     */
-    cf->output_dir = "/tmp/wperf";
-    cf->timeout = 90000;
-
-    char *arg1[] = { "ls", NULL };
-    char *arg2[] = { "date", NULL };
-
-    cf->argv = malloc(2 * sizeof(char **));
-    cf->argv[0] = &arg1[0];
-    cf->argv[1] = &arg2[0];
 
     while (-1 != (opt = getopt(argc, argv, "p:P:hd:n:o:"))) {
         switch (opt) {
