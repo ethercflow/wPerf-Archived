@@ -1,5 +1,9 @@
 #include "defs.h"
 
+static const char *basedir = "/sys/kernel/debug/tracing/instances";
+static const char *instances[] = { "switch", "softirq", "wait", NULL };
+const int instances_num = 3;
+
 static void timer_expire(uv_timer_t *handle) {
     struct recorder *recorder;
 
@@ -15,6 +19,9 @@ int recorder_run(struct config *cf, uv_loop_t *loop)
     recorder.loop = loop;
     recorder.cf = *cf;
     recorder.expired = false;
+
+    setup_ioworkers(cf, &recorder);
+    setup_event_instances(cf, basedir, &instances[0]);
 
     err = record_events(&recorder);
     if (err)

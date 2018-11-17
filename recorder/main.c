@@ -3,10 +3,6 @@
 static void parse_opts(struct config *conf, int argc, char **argv);
 static void usage(void);
 
-static const char *basedir = "/sys/kernel/debug/tracing/instances";
-static const char *instances[] = { "switch", "softirq", "wait", NULL };
-static const int instances_num = 3;
-
 static const char *progname = __FILE__;  /* Reset in main(). */
 
 int main(int argc, char *argv[])
@@ -20,8 +16,6 @@ int main(int argc, char *argv[])
     conf.instances_in = malloc(sizeof(char*) * instances_num);
     conf.instances_out = malloc(sizeof(char*) * instances_num);
     parse_opts(&conf, argc, argv);
-
-    setup_event_instances(&conf, basedir, &instances[0]);
 
     err = recorder_run(&conf, uv_default_loop());
     if (err)
@@ -39,6 +33,13 @@ static void parse_opts(struct config *cf, int argc, char **argv)
      */
     cf->output_dir = "/tmp/wperf";
     cf->timeout = 90000;
+
+    char *arg1[] = { "ls", NULL };
+    char *arg2[] = { "date", NULL };
+
+    cf->argv = malloc(2 * sizeof(char **));
+    cf->argv[0] = &arg1[0];
+    cf->argv[1] = &arg2[0];
 
     while (-1 != (opt = getopt(argc, argv, "p:P:hd:n:o:"))) {
         switch (opt) {
