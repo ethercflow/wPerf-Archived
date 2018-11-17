@@ -54,9 +54,14 @@ struct event_ctx {
 };
 
 struct ioworker {
+    uv_loop_t *loop;
     uv_process_t req;
     uv_process_options_t options;
-    uv_pipe_t pipe;
+    union {
+        uv_fs_t open;
+        uv_fs_t close;
+    } fs_req;
+    uv_file fd;
 };
 
 struct recorder {
@@ -66,6 +71,7 @@ struct recorder {
     bool expired;
     struct event_ctx *events;
     struct ioworker *workers;
+    int worker_count;
 };
 
 extern const int instances_num;
@@ -74,5 +80,38 @@ void setup_event_instances(struct config *cf, const char *base, const char **p);
 void setup_ioworkers(struct config *cf, struct recorder *recorder);
 int recorder_run(struct config *cf, uv_loop_t *loop);
 int record_events(struct recorder *recorder);
+
+static inline void create_instance_dir(char *dir, uv_fs_t *req,
+                                       const char *base, const char *name)
+{
+    int r;
+
+    snprintf(dir, MAX_PATH_LEN, "%s/%s", base, name);
+    r = uv_fs_mkdir(NULL, req, dir, 0755, NULL);
+    assert(r == 0 || r == UV_EEXIST);
+}
+
+static inline char *get_instance_input(char *dir, const char *base,
+                                       const char *name)
+{
+    snprintf(dir, MAX_PATH_LEN, "%s/%s/trace_pipe", base, name);
+    return strdup(dir);
+}
+
+static inline void create_instance_output(char *dir, uv_fs_t *req,
+                                          const char *base, const char *name)
+{
+    int r;
+
+    snprintf(dir, MAX_PATH_LEN, "/%s/%s", base, name);
+    r = uv_fs_mkdir(NULL, req, dir, 0755, NULL);
+    assert(r == 0 || r == UV_EEXIST);
+}
+
+static inline char *get_instance_output(char *dir, const char *base, const char *name)
+{
+    snprintf(dir, MAX_PATH_LEN, "%s/%s/output", base, name);
+    return strdup(dir);
+}
 
 #endif // __DEFS_H_

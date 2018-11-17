@@ -2,39 +2,6 @@
 
 static void on_read(uv_fs_t *req);
 
-static inline void create_instance_dir(char *dir, uv_fs_t *req,
-                                       const char *base, const char *name)
-{
-    int r;
-
-    snprintf(dir, MAX_PATH_LEN, "%s/%s", base, name);
-    r = uv_fs_mkdir(NULL, req, dir, 0755, NULL);
-    assert(r == 0 || r == UV_EEXIST);
-}
-
-static inline char *get_instance_input(char *dir, const char *base,
-                                       const char *name)
-{
-    snprintf(dir, MAX_PATH_LEN, "%s/%s/trace_pipe", base, name);
-    return strdup(dir);
-}
-
-static inline void create_instance_output(char *dir, uv_fs_t *req,
-                                          const char *base, const char *name)
-{
-    int r;
-
-    snprintf(dir, MAX_PATH_LEN, "/%s/%s", base, name);
-    r = uv_fs_mkdir(NULL, req, dir, 0755, NULL);
-    assert(r == 0 || r == UV_EEXIST);
-}
-
-static inline char *get_instance_output(char *dir, const char *base, const char *name)
-{
-    snprintf(dir, MAX_PATH_LEN, "%s/%s/output", base, name);
-    return strdup(dir);
-}
-
 static inline void cleanup(struct event_ctx *event)
 {
     uv_fs_close(event->loop, &event->req.close, event->fd[0], NULL);
