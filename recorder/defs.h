@@ -80,6 +80,7 @@ void setup_event_instances(struct config *cf, const char *base, const char **p);
 void setup_ioworkers(struct config *cf, struct recorder *recorder);
 int recorder_run(struct config *cf, uv_loop_t *loop);
 int record_events(struct recorder *recorder);
+int record_ioworkers(struct recorder *recorder);
 
 static inline void create_instance_dir(char *dir, uv_fs_t *req,
                                        const char *base, const char *name)

@@ -36,6 +36,10 @@ int recorder_run(struct config *cf, uv_loop_t *loop)
     if (err)
         return -1;
 
+    err = record_ioworkers(&recorder);
+    if (err)
+        return -1;
+
     uv_timer_init(loop, &recorder.expire_handler);
     uv_timer_start(&recorder.expire_handler, timer_expire, cf->timeout, 0);
 

@@ -74,6 +74,8 @@ void setup_ioworkers(struct config *cf, struct recorder *recorder)
 
     while (worker_count--) {
         worker = &recorder->workers[worker_count];
+        worker->loop = recorder->loop;
+
         create_instance_output(dir, &req, cf->output_dir, cf->disk_list);
         fname = get_instance_output(dir, cf->output_dir, cf->disk_list);
 
@@ -102,6 +104,24 @@ void setup_ioworkers(struct config *cf, struct recorder *recorder)
 
         fprintf(stderr, "Setup worker %d\n", worker->req.pid);
         free(fname);
-        uv_spawn(recorder->loop, &worker->req, &worker->options);
     }
+}
+
+int record_ioworkers(struct recorder *recorder)
+{
+    struct ioworker *worker;
+    int worker_count;
+    int r;
+
+    worker_count = recorder->worker_count;
+    while (worker_count--) {
+        worker = &recorder->workers[worker_count];
+        r = uv_spawn(worker->loop, &worker->req, &worker->options);
+        if (r) {
+            fprintf(stderr, "uv_spawn failed: %s\n", uv_strerror(r));
+            return -1;
+        }
+    }
+
+    return 0;
 }
