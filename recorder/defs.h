@@ -56,6 +56,7 @@ struct event_ctx {
 struct ioworker {
     uv_loop_t *loop;
     uv_process_t req;
+    uv_stdio_container_t child_stdio[3];
     uv_process_options_t options;
     union {
         uv_fs_t open;
