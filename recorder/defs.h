@@ -116,4 +116,17 @@ static inline char *get_instance_output(char *dir, const char *base, const char 
     return strdup(dir);
 }
 
+static inline void get_instance_filter(char *dir, const char *base,
+                                       const char *instance, const char *event)
+{
+    snprintf(dir, MAX_PATH_LEN, "%s/%s/events/wperf/%s/filter", base, instance, event);
+}
+
+static inline void get_instance_enable(char *dir, const char *base,
+                                       const char *instance, const char *event)
+{
+    snprintf(dir, MAX_PATH_LEN, "%s/%s/events/wperf/%s/enable", base, instance, event);
+}
+
+
 #endif // __DEFS_H_

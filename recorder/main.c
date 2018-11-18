@@ -72,7 +72,7 @@ static void usage(void)
             "\n"
             "Options:\n"
             "\n"
-            "    -p <pids>      Pid list separated by ','\n"
+            "    -p <pids>      Pid list eg: common_pid == 123 || common_pid == 345"
             "    -P <period>    Default: 90000 (90s)\n"
             "    -h             Show this help message.\n"
             "    -d <disks>     Disk name list seprated by ','\n"
