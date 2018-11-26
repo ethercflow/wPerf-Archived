@@ -4,16 +4,25 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"sort"
 	"strconv"
 	"strings"
 )
 
-// FIXME: move to Config struct
 var (
 	CPUFreqFile      string
 	PidsFile         string
 	SwitchEventFile  string
 	SoftirqEventFile string
+
+	CPUFreq    float64
+	PidList    []pid_t
+	SwitchList []SwitchEvent
+	SoftList   []SoftEvent
+
+	SegMap  SegmentMap
+	PPSM    PidPrevStateMap
+	SoftMap SoftEventMap
 )
 
 func init() {
@@ -39,8 +48,10 @@ type Segments map[uint64]Segment
 
 type SegmentMap map[pid_t]Segments
 
-func (s *SegmentMap) Init() {
-
+func (s *SegmentMap) Init(pidList []pid_t) {
+	for _, pid := range pidList {
+		(*s)[pid] = make(Segments)
+	}
 }
 
 type SwitchEvent struct {
@@ -54,6 +65,12 @@ type SwitchEvent struct {
 	In_whitch_ctx int    `json:"in_whitch_ctx"`
 }
 
+type ByTime []SwitchEvent
+
+func (b ByTime) Len() int           { return len(b) }
+func (b ByTime) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b ByTime) Less(i, j int) bool { return b[i].Time < b[j].Time }
+
 type SoftEvent struct {
 	Core  int    `json:"core"`
 	Type  int    `json:"type"`
@@ -61,11 +78,59 @@ type SoftEvent struct {
 	Etime uint64 `json:"etime"`
 }
 
+type SoftEvents map[uint64]SoftEvent
+
 // key: core id
-type SoftEventMap map[int]SoftEvent
+type SoftEventMap map[int]SoftEvents
 
-func (s *SoftEventMap) Init() {
+func (s *SoftEventMap) Init(sl []SoftEvent) {
+	for _, v := range sl {
+		_, ok := (*s)[v.Core]
+		if !ok {
+			(*s)[v.Core] = make(SoftEvents)
+		}
+		(*s)[v.Core][v.Etime] = v
+	}
+}
 
+type PidPrevState struct {
+	Timestamp uint64
+	State     int
+}
+
+type PidPrevStateMap map[pid_t]PidPrevState
+
+func (p *PidPrevStateMap) Init(pl []pid_t, sl []SwitchEvent) {
+	createTimeList := make(map[pid_t]uint64)
+	exitTimeList := make(map[pid_t]uint64)
+
+	traceBeginTime := sl[0].Time
+	traceEndTime := sl[len(sl)-1].Time
+
+	for _, v := range sl {
+		switch v.Type {
+		case 2:
+			createTimeList[v.Next_pid] = v.Time // TODO: may exist bug?
+		case 3:
+			exitTimeList[v.Prev_pid] = v.Time // TODO: may exist bug?
+		}
+	}
+
+	for _, v := range pl {
+		t, ok := createTimeList[v]
+		if ok {
+			(*p)[v] = PidPrevState{t, -1}
+		} else {
+			(*p)[v] = PidPrevState{traceBeginTime, -1}
+		}
+
+		t, ok = exitTimeList[v]
+		if ok {
+			(*p)[v] = PidPrevState{t, -1}
+		} else {
+			(*p)[v] = PidPrevState{traceEndTime, -1}
+		}
+	}
 }
 
 type Loader interface {
@@ -75,8 +140,7 @@ type Loader interface {
 	SoftirqEvents(file string) ([]SoftEvent, error)
 }
 
-type loader struct {
-}
+type loader struct{}
 
 func (l *loader) CPUFreq(file string) (float64, error) {
 	data, err := ioutil.ReadFile(file)
@@ -89,7 +153,7 @@ func (l *loader) CPUFreq(file string) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return cpuFreq, nil
+	return cpuFreq * 1e9, nil
 }
 
 func (l *loader) Pids(file string) ([]pid_t, error) {
@@ -165,4 +229,16 @@ func Cascade(wait Segment) {
 
 func main() {
 	flag.Parse()
+
+	loader := &loader{}
+
+	CPUFreq, _ = loader.CPUFreq(CPUFreqFile)
+	PidList, _ = loader.Pids(CPUFreqFile)
+	SwitchList, _ = loader.SwitchEvents(CPUFreqFile)
+	SoftList, _ = loader.SoftirqEvents(CPUFreqFile)
+
+	SegMap.Init(PidList)
+	sort.Sort(ByTime(SwitchList))
+	PPSM.Init(PidList, SwitchList)
+	SoftMap.Init(SoftList)
 }
