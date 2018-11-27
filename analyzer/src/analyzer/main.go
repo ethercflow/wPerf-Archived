@@ -54,4 +54,8 @@ func main() {
 	process.InitPrevStateMap(PidList, SwitchList)
 	process.InitSegMap(PidList)
 	events.InitSoftMap(SoftList)
+
+	for _, pid := range PidList {
+		process.BreakIntoSegments(pid, SwitchList)
+	}
 }

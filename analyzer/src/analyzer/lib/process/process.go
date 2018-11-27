@@ -17,7 +17,7 @@ const (
 )
 
 const (
-	NONE = 0
+	NONE    = 0
 	UNKNOWN = -100 // TODO: use a better way?
 )
 
@@ -25,24 +25,28 @@ var (
 	CreateTimeList map[int]uint64
 	ExitTimeList   map[int]uint64
 
-	psm PrevStateMap
-	sm SegmentMap
+	prevStateMap PrevStateMap
+	segMap       SegmentMap
+
+	statMap StatMap
 )
 
 func init() {
 	CreateTimeList = make(map[int]uint64)
 	ExitTimeList = make(map[int]uint64)
 
-	psm = make(PrevStateMap)
-	sm = make(SegmentMap)
+	prevStateMap = make(PrevStateMap)
+	segMap = make(SegmentMap)
+
+	statMap = make(StatMap)
 }
 
 func InitSegMap(pl []int) {
-	sm.Init(pl)
+	segMap.Init(pl)
 }
 
 func InitPrevStateMap(pl []int, sl []events.Switch) {
-	psm.Init(pl, sl)
+	prevStateMap.Init(pl, sl)
 }
 
 func Pids(file string) ([]int, error) {
@@ -99,39 +103,42 @@ func (p *PrevStateMap) Init(pl []int, sl []events.Switch) {
 
 	for _, v := range sl {
 		switch v.Type {
-		case 2:
+		case 2: // wake_up_new_task
 			CreateTimeList[v.Next_pid] = v.Time // TODO: may exist bug?
-		case 3:
+		case 3: // do_exit
 			ExitTimeList[v.Prev_pid] = v.Time // TODO: may exist bug?
 		}
 	}
 
 	for _, v := range pl {
+		stime := traceSTime
+		etime := traceETime
+
 		t, ok := CreateTimeList[v]
 		if ok {
 			(*p)[v] = PrevState{t, -1}
+			stime = t
 		} else {
 			(*p)[v] = PrevState{traceSTime, -1}
 		}
 
-		t, ok = ExitTimeList[v]
-		if ok {
-			(*p)[v] = PrevState{t, -1}
-		} else {
-			(*p)[v] = PrevState{traceETime, -1}
+		if t, ok := ExitTimeList[v]; ok {
+			etime = t
 		}
+
+		statMap[v] = new(Stat)
+		statMap[v].Total = etime - stime
 	}
 }
 
 func GetPrevState(pid int) PrevState {
-	return psm[pid]
+	return prevStateMap[pid]
 }
 
 func HasExitTime(pid int) (uint64, bool) {
 	t, ok := ExitTimeList[pid]
 	return t, ok
 }
-
 
 type Segment struct {
 	Pid     int
@@ -163,8 +170,20 @@ func (s *SegmentMap) Init(pidList []int) {
 }
 
 func GetSegments(pid int) Segments {
-	return sm[pid]
+	return segMap[pid]
 }
+
+type Stat struct {
+	Running  uint64
+	Runnable uint64
+	Blocked  uint64
+	HardIRQ  uint64
+	SoftIRQ  uint64
+	Unknown  uint64
+	Total    uint64
+}
+
+type StatMap map[int]*Stat
 
 // Matching of wait and wakeup events can naturally break a thread’s time into
 // multiple segments, in either “running/runnable” or “waiting” state. The ana-
@@ -173,6 +192,7 @@ func GetSegments(pid int) Segments {
 func BreakIntoSegments(pid int, swl []events.Switch) {
 	ps := GetPrevState(pid)
 	segs := GetSegments(pid)
+	stat := statMap[pid]
 
 	for _, sw := range swl {
 		pt := ps.Timestamp
@@ -198,8 +218,14 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 					segs.Put(pid, RUNNING, pt, stime, NONE)
 					segs.Put(pid, RUNNABLE, stime, etime, NONE)
 					segs.Put(pid, RUNNING, etime, sw.Time, NONE)
+
+					stat.Running += stime - pt
+					stat.SoftIRQ += etime - stime
+					stat.Running += sw.Time - etime
 				} else { // pid not preempt by softirq
 					segs.Put(pid, RUNNING, pt, sw.Time, NONE)
+
+					stat.Running += sw.Time - pt
 				}
 				break
 			}
@@ -207,6 +233,8 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 			if sw.Next_pid == pid { // switch in
 				segs.Put(pid, RUNNABLE, pt, sw.Time, NONE)
 				ps.UpdateToRunning(sw.Time)
+
+				stat.Running += sw.Time - pt
 			}
 		case 1: // try_to_wake_up: blocked => runnable
 			if sw.Next_pid == pid {
@@ -217,8 +245,12 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 				ps.UpdateToRunnable(sw.Time)
 				if sw.In_whitch_ctx == 0 {
 					segs.Put(pid, BLOCKED, pt, sw.Time, sw.Prev_pid)
+
+					stat.Blocked += sw.Time - pt
 				} else {
 					segs.Put(pid, BLOCKED, pt, sw.Time, -sw.In_whitch_ctx)
+
+					// FIXME: swith case In_whitch_ctx to handle stat info
 				}
 			}
 		}
@@ -229,14 +261,20 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 	switch ps.State {
 	case RUNNING:
 		segs.Put(pid, RUNNING, ps.Timestamp, traceEtime, NONE)
+
+		stat.Running += traceEtime - ps.Timestamp
 	case RUNNABLE:
 		segs.Put(pid, RUNNABLE, ps.Timestamp, traceEtime, NONE)
+
+		stat.Running += traceEtime - ps.Timestamp
 	default:
 		if t, ok := HasExitTime(pid); ok {
 			seg := segs.Floor(t)
 			seg.ETime = t
 		} else {
 			segs.Put(pid, BLOCKED, ps.Timestamp, traceEtime, UNKNOWN)
+
+			stat.Unknown += traceEtime - ps.Timestamp
 		}
 	}
 }
