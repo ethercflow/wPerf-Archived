@@ -146,6 +146,7 @@ type Segment struct {
 	STime   uint64
 	ETime   uint64
 	WaitFor int
+	Overlap []int
 }
 
 type Segments struct {
@@ -153,23 +154,37 @@ type Segments struct {
 }
 
 func (s *Segments) Put(pid, state int, stime, etime uint64, waitFor int) {
-	s.tm.Put(stime, &Segment{pid, state, stime, etime, waitFor})
+	s.tm.Put(stime, &Segment{pid, state, stime, etime, waitFor, make([]int, 0)})
 }
 
-func (s *Segments) Floor(stime uint64) *Segment {
-	_, seg := s.tm.Floor(stime)
-	return seg.(*Segment)
+func (s *Segments) Floor(stime uint64) (uint64, *Segment) {
+	k, v := s.tm.Floor(stime)
+	return k.(uint64), v.(*Segment)
 }
 
-type SegmentMap map[int]Segments
+func (s *Segments) Ceiling(stime uint64) (uint64, *Segment) {
+	k, v := s.tm.Ceiling(stime)
+	return k.(uint64), v.(*Segment)
+}
 
-func (s *SegmentMap) Init(pidList []int) {
-	for _, pid := range pidList {
-		(*s)[pid] = Segments{treemap.NewWith(utils.UInt64Comparator)}
+func (s *Segments) ForEach(f func(k, v interface{}))  {
+	it := s.tm.Iterator()
+	for it.Next() {
+		k := it.Key()
+		v := it.Value()
+		f(k, v)
 	}
 }
 
-func GetSegments(pid int) Segments {
+type SegmentMap map[int]*Segments
+
+func (s *SegmentMap) Init(pidList []int) {
+	for _, pid := range pidList {
+		(*s)[pid] = &Segments{treemap.NewWith(utils.UInt64Comparator)}
+	}
+}
+
+func GetSegments(pid int) *Segments {
 	return segMap[pid]
 }
 
@@ -269,7 +284,7 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 		stat.Running += traceEtime - ps.Timestamp
 	default:
 		if t, ok := HasExitTime(pid); ok {
-			seg := segs.Floor(t)
+			_, seg := segs.Floor(t)
 			seg.ETime = t
 		} else {
 			segs.Put(pid, BLOCKED, ps.Timestamp, traceEtime, UNKNOWN)
@@ -277,4 +292,73 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 			stat.Unknown += traceEtime - ps.Timestamp
 		}
 	}
+}
+
+// TODO: maybe slow, change tail recursion to iteration
+func Cascade(w *Segment) {
+	if w.State != BLOCKED {
+		return
+	}
+
+	addWeight(w.Pid, w.WaitFor, w.ETime, w.STime)
+	segs := findAllWaitingSegments(w.WaitFor, w.ETime, w.STime)
+	for _, seg := range segs {
+		if seg.STime < w.STime {
+			seg.STime = w.STime
+		}
+		if seg.ETime > w.ETime {
+			seg.ETime = w.ETime
+		}
+		Cascade(seg)
+	}
+}
+
+func addWeight(waitID, wakerID int, etime, stime uint64) {
+
+}
+
+// Find all waiting segments in wakerID that overlap with [w.start w.end]
+func findAllWaitingSegments(wakerID int, etime, stime uint64) []*Segment {
+	segs := GetSegments(wakerID)
+
+	if segs == nil {
+		return nil
+	}
+
+	_, seg := segs.Floor(stime)
+	if seg == nil {
+		return nil
+	}
+
+	waitSegs := make([]*Segment, 0)
+	for {
+		if seg.State == BLOCKED {
+			// cascade will align waitSeg's stime with wID, I'm not sure the
+			// affect to the waitSeg's cascade, so create a copy for align
+			waitSeg := *seg
+			copy(waitSeg.Overlap, seg.Overlap)
+			contained := false
+			for _, pid := range waitSeg.Overlap {
+				if pid == wakerID {
+					contained = true
+					break
+				}
+			}
+			if !contained {
+				waitSeg.Overlap = append(waitSeg.Overlap, wakerID)
+			}
+			waitSegs = append(waitSegs, &waitSeg)
+		}
+
+		if seg.ETime >= etime {
+			break
+		}
+
+		_, seg = segs.Ceiling(stime + 1) // TODO: make sure +1 is needed
+		if seg == nil || seg.STime >= etime {
+			break
+		}
+	}
+
+	return nil
 }

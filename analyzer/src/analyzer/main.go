@@ -58,4 +58,11 @@ func main() {
 	for _, pid := range PidList {
 		process.BreakIntoSegments(pid, SwitchList)
 	}
+
+	for _, pid := range PidList {
+		segs := process.GetSegments(pid)
+		segs.ForEach(func(_, v interface{}) {
+			process.Cascade(v.(*process.Segment))
+		})
+	}
 }
