@@ -1,7 +1,11 @@
 package process
 
 import (
+	"bufio"
+	"fmt"
 	"io/ioutil"
+	"log"
+	"os"
 	"strconv"
 	"strings"
 
@@ -22,13 +26,16 @@ const (
 )
 
 var (
+	cpuFreq float64
+
 	createTimeList map[int]uint64
 	exitTimeList   map[int]uint64
 
 	prevStateMap PrevStateMap
 	segMap       SegmentMap
 
-	statMap StatMap
+	statMap      StatMap
+	waitForGraph WaitForGraph
 )
 
 func init() {
@@ -39,6 +46,7 @@ func init() {
 	segMap = make(SegmentMap)
 
 	statMap = make(StatMap)
+	waitForGraph = make(WaitForGraph)
 }
 
 func initSegMap(pl []int) {
@@ -49,10 +57,23 @@ func InitPrevStates(pl []int, sl []events.Switch) {
 	prevStateMap.Init(pl, sl)
 }
 
-func Pids(file string) ([]int, error) {
+func ReadCPUFreq(file string) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
-		return nil, err
+		log.Fatalln("ReadCPUFreq: ", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	cpuFreq, err = strconv.ParseFloat(lines[0], 64)
+	if err != nil {
+		log.Fatalln("ReadCPUFreq: ", err)
+	}
+}
+
+func Pids(file string) []int {
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		log.Fatalln("Pids: ", err)
 	}
 
 	pidList := make([]int, 0)
@@ -60,14 +81,14 @@ func Pids(file string) ([]int, error) {
 	for _, line := range lines {
 		pid, err := strconv.Atoi(line)
 		if err != nil {
-			return nil, err
+			log.Fatalln("Pids: ", err)
 		}
 		pidList = append(pidList, pid)
 	}
 
 	initSegMap(pidList) // Is a good place to do init?
 
-	return pidList, nil
+	return pidList
 }
 
 type PrevState struct {
@@ -169,7 +190,7 @@ func (s *Segments) Ceiling(stime uint64) (uint64, *Segment) {
 	return k.(uint64), v.(*Segment)
 }
 
-func (s *Segments) ForEach(f func(k, v interface{}))  {
+func (s *Segments) ForEach(f func(k, v interface{})) {
 	it := s.tm.Iterator()
 	for it.Next() {
 		k := it.Key()
@@ -201,6 +222,8 @@ type Stat struct {
 }
 
 type StatMap map[int]*Stat
+
+type WaitForGraph map[string]uint64
 
 // Matching of wait and wakeup events can naturally break a thread’s time into
 // multiple segments, in either “running/runnable” or “waiting” state. The ana-
@@ -316,7 +339,11 @@ func Cascade(w *Segment) {
 }
 
 func addWeight(waitID, wakerID int, etime, stime uint64) {
-
+	k := strconv.Itoa(waitID) + " " + strconv.Itoa(wakerID) + ""
+	if _, ok := waitForGraph[k]; !ok {
+		waitForGraph[k] = 0
+	}
+	waitForGraph[k] += etime - stime
 }
 
 // Find all waiting segments in wakerID that overlap with [w.start w.end]
@@ -363,4 +390,49 @@ func findAllWaitingSegments(wakerID int, etime, stime uint64) []*Segment {
 	}
 
 	return nil
+}
+
+func OutputStat(file string) {
+	f, err := os.Create(file)
+	if err != nil {
+		log.Fatalln("Create %s failed: ", file, err)
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+
+	for k, v := range prevStateMap {
+		if v.State == -1 {
+			continue
+		}
+		stat := statMap[k]
+		l := fmt.Sprintf("%d %f %f %f %f %f %f %f",
+			k,
+			float64(stat.Running) / cpuFreq,
+			float64(stat.Runnable) / cpuFreq,
+			float64(stat.Blocked) / cpuFreq,
+			float64(stat.HardIRQ) / cpuFreq,
+			float64(stat.SoftIRQ) / cpuFreq,
+			float64(stat.Unknown) / cpuFreq,
+			float64(stat.Total) / cpuFreq,
+		)
+		fmt.Fprintln(w, l)
+	}
+}
+
+func OutputWaitForGraph(file string) {
+	f, err := os.Create(file)
+	if err != nil {
+		log.Fatalln("Create %s failed: ", file, err)
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+	for k, v := range waitForGraph {
+		if strings.Contains(k, strconv.Itoa(UNKNOWN)) {
+			continue
+		}
+		l := fmt.Sprintf("%s%f", k, float64(v) / cpuFreq)
+		fmt.Fprintln(w, l)
+	}
 }

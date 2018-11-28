@@ -3,6 +3,7 @@ package events
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"sort"
 	"strings"
 )
@@ -18,16 +19,16 @@ type Switch struct {
 	In_whitch_ctx int    `json:"in_whitch_ctx"`
 }
 
-type ByTime []Switch
+type byTime []Switch
 
-func (b ByTime) Len() int           { return len(b) }
-func (b ByTime) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
-func (b ByTime) Less(i, j int) bool { return b[i].Time < b[j].Time }
+func (b byTime) Len() int           { return len(b) }
+func (b byTime) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b byTime) Less(i, j int) bool { return b[i].Time < b[j].Time }
 
-func LoadSwitch(file string) ([]Switch, error) {
+func LoadSwitch(file string) []Switch {
 	bs, err := ioutil.ReadFile(file)
 	if err != nil {
-		return nil, err
+		log.Fatalln("LoadSwitch: ", err)
 	}
 
 	es := make([]Switch, 0)
@@ -36,11 +37,11 @@ func LoadSwitch(file string) ([]Switch, error) {
 		var e Switch
 		err := json.Unmarshal([]byte(l), &e)
 		if err != nil {
-			return nil, err
+			log.Fatalln("LoadSwitch: ", err)
 		}
 		es = append(es, e)
 	}
-	sort.Sort(ByTime(es))
+	sort.Sort(byTime(es))
 
-	return es, nil
+	return es
 }

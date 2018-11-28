@@ -3,6 +3,7 @@ package events
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"strings"
 
 	"github.com/emirpasic/gods/maps/treemap"
@@ -36,10 +37,10 @@ func (s *SoftMap) Init(sl []Soft) {
 	}
 }
 
-func LoadSoft(file string) ([]Soft, error) {
+func LoadSoft(file string) []Soft {
 	bs, err := ioutil.ReadFile(file)
 	if err != nil {
-		return nil, err
+		log.Fatalln("LoadSoft: ", err)
 	}
 
 	es := make([]Soft, 0)
@@ -48,12 +49,12 @@ func LoadSoft(file string) ([]Soft, error) {
 		var e Soft
 		err := json.Unmarshal([]byte(l), &e)
 		if err != nil {
-			return nil, err
+			log.Fatalln("LoadSoft: ", err)
 		}
 		es = append(es, e)
 	}
 
-	return es, nil
+	return es
 }
 
 func InitSoftContainer(sl []Soft) {
