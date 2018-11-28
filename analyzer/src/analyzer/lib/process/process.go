@@ -22,8 +22,8 @@ const (
 )
 
 var (
-	CreateTimeList map[int]uint64
-	ExitTimeList   map[int]uint64
+	createTimeList map[int]uint64
+	exitTimeList   map[int]uint64
 
 	prevStateMap PrevStateMap
 	segMap       SegmentMap
@@ -32,8 +32,8 @@ var (
 )
 
 func init() {
-	CreateTimeList = make(map[int]uint64)
-	ExitTimeList = make(map[int]uint64)
+	createTimeList = make(map[int]uint64)
+	exitTimeList = make(map[int]uint64)
 
 	prevStateMap = make(PrevStateMap)
 	segMap = make(SegmentMap)
@@ -41,11 +41,11 @@ func init() {
 	statMap = make(StatMap)
 }
 
-func InitSegMap(pl []int) {
+func initSegMap(pl []int) {
 	segMap.Init(pl)
 }
 
-func InitPrevStateMap(pl []int, sl []events.Switch) {
+func InitPrevStates(pl []int, sl []events.Switch) {
 	prevStateMap.Init(pl, sl)
 }
 
@@ -64,6 +64,8 @@ func Pids(file string) ([]int, error) {
 		}
 		pidList = append(pidList, pid)
 	}
+
+	initSegMap(pidList) // Is a good place to do init?
 
 	return pidList, nil
 }
@@ -104,9 +106,9 @@ func (p *PrevStateMap) Init(pl []int, sl []events.Switch) {
 	for _, v := range sl {
 		switch v.Type {
 		case 2: // wake_up_new_task
-			CreateTimeList[v.Next_pid] = v.Time // TODO: may exist bug?
+			createTimeList[v.Next_pid] = v.Time // TODO: may exist bug?
 		case 3: // do_exit
-			ExitTimeList[v.Prev_pid] = v.Time // TODO: may exist bug?
+			exitTimeList[v.Prev_pid] = v.Time // TODO: may exist bug?
 		}
 	}
 
@@ -114,7 +116,7 @@ func (p *PrevStateMap) Init(pl []int, sl []events.Switch) {
 		stime := traceSTime
 		etime := traceETime
 
-		t, ok := CreateTimeList[v]
+		t, ok := createTimeList[v]
 		if ok {
 			(*p)[v] = PrevState{t, -1}
 			stime = t
@@ -122,7 +124,7 @@ func (p *PrevStateMap) Init(pl []int, sl []events.Switch) {
 			(*p)[v] = PrevState{traceSTime, -1}
 		}
 
-		if t, ok := ExitTimeList[v]; ok {
+		if t, ok := exitTimeList[v]; ok {
 			etime = t
 		}
 
@@ -136,7 +138,7 @@ func GetPrevState(pid int) PrevState {
 }
 
 func HasExitTime(pid int) (uint64, bool) {
-	t, ok := ExitTimeList[pid]
+	t, ok := exitTimeList[pid]
 	return t, ok
 }
 

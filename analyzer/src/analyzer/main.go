@@ -51,9 +51,8 @@ func main() {
 	SwitchList, _ = events.LoadSwitch(CPUFreqFile)
 	SoftList, _ = events.LoadSoft(CPUFreqFile)
 
-	process.InitPrevStateMap(PidList, SwitchList)
-	process.InitSegMap(PidList)
-	events.InitSoftMap(SoftList)
+	process.InitPrevStates(PidList, SwitchList)
+	events.InitSoftContainer(SoftList)
 
 	for _, pid := range PidList {
 		process.BreakIntoSegments(pid, SwitchList)

@@ -56,7 +56,7 @@ func LoadSoft(file string) ([]Soft, error) {
 	return es, nil
 }
 
-func InitSoftMap(sl []Soft) {
+func InitSoftContainer(sl []Soft) {
 	sm.Init(sl)
 }
 
