@@ -24,10 +24,10 @@ def encode(lines, output):
     for line in lines:
         structed = {}
 
-        comm, event, data = line.split(":")
-        task_pid, cpu, sched, timestamp = comm.strip().split(" ")
+        comm, event, data = line.rsplit(":", 2)
+        task_pid, cpu, sched, timestamp = ' '.join(comm.split()).split(" ")
 
-        structed["comm"], structed["pid"] = task_pid.split("-")
+        structed["comm"], structed["pid"] = task_pid.rsplit("-", 1)
         structed["cpu"] = int(cpu.strip("[").strip("]"))
         structed["irqs_off"] = sched[0]
         structed["need_resched"] = sched[1]
