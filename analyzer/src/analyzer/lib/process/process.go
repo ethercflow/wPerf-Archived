@@ -21,6 +21,25 @@ const (
 )
 
 const (
+	HI_SOFTIRQ = iota
+	TIMER_SOFTIRQ
+	NET_TX_SOFTIRQ
+	NET_RX_SOFTIRQ
+	BLOCK_SOFTIRQ
+	IRQ_POLL_SOFTIRQ
+	TASKLET_SOFTIRQ
+	SCHED_SOFTIRQ
+	HRTIMER_SOFTIRQ
+	RCU_SOFTIRQ
+
+	NR_SOFTIRQS
+
+	HARDIRQ
+	KSOFTIRQ
+	KERNEL
+)
+
+const (
 	NONE    = 0
 	UNKNOWN = -100 // TODO: use a better way?
 )
@@ -217,6 +236,8 @@ type Stat struct {
 	Blocked  uint64
 	HardIRQ  uint64
 	SoftIRQ  uint64
+	DISKIO   uint64
+	NETIO    uint64
 	Unknown  uint64
 	Total    uint64
 }
@@ -290,7 +311,17 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 				} else {
 					segs.Put(pid, BLOCKED, pt, sw.Time, -sw.In_whitch_ctx)
 
-					// FIXME: swith case In_whitch_ctx to handle stat info
+					switch sw.In_whitch_ctx {
+					case -BLOCK_SOFTIRQ:
+						stat.DISKIO += sw.Time - pt
+					case -NET_RX_SOFTIRQ:
+						stat.NETIO += sw.Time - pt
+					case -HARDIRQ:
+						stat.HardIRQ += sw.Time - pt
+					// TODO: handle softirq
+					default:
+						stat.Unknown += sw.Time - pt
+					}
 				}
 			}
 		}
@@ -324,6 +355,8 @@ func Cascade(w *Segment) {
 	if w.State != BLOCKED {
 		return
 	}
+
+	w.Overlap = append(w.Overlap, w.Pid)
 
 	addWeight(w.Pid, w.WaitFor, w.ETime, w.STime)
 	segs := findAllWaitingSegments(w.WaitFor, w.ETime, w.STime)
@@ -406,15 +439,17 @@ func OutputStat(file string) {
 			continue
 		}
 		stat := statMap[k]
-		l := fmt.Sprintf("%d %f %f %f %f %f %f %f",
+		l := fmt.Sprintf("%d %f %f %f %f %f %f %f %f %f",
 			k,
-			float64(stat.Running) / cpuFreq,
-			float64(stat.Runnable) / cpuFreq,
-			float64(stat.Blocked) / cpuFreq,
-			float64(stat.HardIRQ) / cpuFreq,
-			float64(stat.SoftIRQ) / cpuFreq,
-			float64(stat.Unknown) / cpuFreq,
-			float64(stat.Total) / cpuFreq,
+			float64(stat.Running)/cpuFreq,
+			float64(stat.Runnable)/cpuFreq,
+			float64(stat.Blocked)/cpuFreq,
+			float64(stat.DISKIO)/cpuFreq,
+			float64(stat.NETIO)/cpuFreq,
+			float64(stat.HardIRQ)/cpuFreq,
+			float64(stat.SoftIRQ)/cpuFreq,
+			float64(stat.Unknown)/cpuFreq,
+			float64(stat.Total)/cpuFreq,
 		)
 		fmt.Fprintln(w, l)
 	}
@@ -432,7 +467,7 @@ func OutputWaitForGraph(file string) {
 		if strings.Contains(k, strconv.Itoa(UNKNOWN)) {
 			continue
 		}
-		l := fmt.Sprintf("%s%f", k, float64(v) / cpuFreq)
+		l := fmt.Sprintf("%s%f", k, float64(v)/cpuFreq)
 		fmt.Fprintln(w, l)
 	}
 }
