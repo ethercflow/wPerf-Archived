@@ -19,8 +19,7 @@ func init() {
 }
 
 type Soft struct {
-	Core  int    `json:"core"`
-	Type  int    `json:"type"`
+	CPU   int    `json:"cpu"`
 	STime uint64 `json:"stime"`
 	ETime uint64 `json:"etime"`
 }
@@ -29,11 +28,11 @@ type SoftMap map[int]*treemap.Map
 
 func (s *SoftMap) Init(sl []Soft) {
 	for _, v := range sl {
-		_, ok := (*s)[v.Core]
+		_, ok := (*s)[v.CPU]
 		if !ok {
-			(*s)[v.Core] = treemap.NewWith(utils.UInt64Comparator)
+			(*s)[v.CPU] = treemap.NewWith(utils.UInt64Comparator)
 		}
-		(*s)[v.Core].Put(v.ETime, v)
+		(*s)[v.CPU].Put(v.ETime, v)
 	}
 }
 
@@ -61,7 +60,7 @@ func InitSoftContainer(sl []Soft) {
 	sm.Init(sl)
 }
 
-func GetCeilingSoft(core int, time uint64) *Soft {
-	_, v := sm[core].Ceiling(time)
+func GetCeilingSoft(cpu int, time uint64) *Soft {
+	_, v := sm[cpu].Ceiling(time)
 	return v.(*Soft)
 }
