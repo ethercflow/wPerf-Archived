@@ -266,7 +266,7 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 					ps.UpdateToStopped(sw.Time)
 				}
 
-				sf := events.GetCeilingSoft(sw.Core, pt)
+				sf := events.GetCeilingSoft(sw.CPU, pt)
 
 				if sf == nil { // no softirq happen
 					segs.Put(pid, RUNNING, pt, sw.Time, NONE)

@@ -9,7 +9,7 @@ import (
 )
 
 type Switch struct {
-	Core          int    `json:"core"`
+	CPU           int    `json:"cpu"`
 	Time          uint64 `json:"time"`
 	Type          int    `json:"type"`
 	Prev_pid      int    `json:"prev_pid"`

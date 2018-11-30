@@ -25,7 +25,7 @@ TRACE_EVENT(__switch_to,
     TP_fast_assign(
         struct per_cpu_wperf_data *data;
 
-        __entry->type       = 0; /* FIXME */
+        __entry->type       = WAIT;
         __entry->tsc        = tsc;
         __entry->prev_pid   = prev_p->pid;
         __entry->next_pid   = next_p->pid;
@@ -36,9 +36,9 @@ TRACE_EVENT(__switch_to,
 
         if (in_irq())
             __entry->in_which_ctx = HARDIRQ;
-        else if (in_serving_softirq())
-            __entry->in_which_ctx = data->softirqs_nr;
-        else  /* TODO: maybe merged with in_serving_softirq */
+        else if (in_serving_softirq()) /* Are we currently processing softirq? */
+            __entry->in_which_ctx = -data->softirqs_nr;
+        else
             __entry->in_which_ctx = KERNEL;
     ),
 
@@ -69,7 +69,7 @@ TRACE_EVENT(try_to_wake_up,
     TP_fast_assign(
         struct per_cpu_wperf_data *data;
 
-        __entry->type       = 1; /* FIXME */
+        __entry->type       = WAKEUP;
         __entry->tsc        = tsc;
         __entry->prev_pid   = current->pid;
         __entry->next_pid   = p->pid;
@@ -80,9 +80,9 @@ TRACE_EVENT(try_to_wake_up,
 
         if (in_irq())
             __entry->in_which_ctx = HARDIRQ;
-        else if (in_serving_softirq())
+        else if (in_serving_softirq()) /* Are we currently processing softirq? */
             __entry->in_which_ctx = data->softirqs_nr;
-        else  /* TODO: maybe merged with in_serving_softirq */
+        else
             __entry->in_which_ctx = KERNEL;
     ),
 
@@ -96,24 +96,22 @@ TRACE_EVENT(try_to_wake_up,
 
 TRACE_EVENT(__do_softirq_ret,
 
-    TP_PROTO(int type, u64 begin_time, u64 end_time),
+    TP_PROTO(u64 begin_time, u64 end_time),
 
-    TP_ARGS(type, begin_time, end_time),
+    TP_ARGS(begin_time, end_time),
 
     TP_STRUCT__entry(
-        __field(int, type)
         __field(u64, begin_time)
         __field(u64, end_time)
     ),
 
     TP_fast_assign(
-        __entry->type = type;
         __entry->begin_time = begin_time;
         __entry->end_time = end_time;
     ),
 
-    TP_printk("type=%d, begin_time=%llu, end_time=%llu",
-              __entry->type, __entry->begin_time, __entry->end_time)
+    TP_printk("begin_time=%llu, end_time=%llu",
+              __entry->begin_time, __entry->end_time)
 );
 
 DECLARE_EVENT_CLASS(common_event,
@@ -182,7 +180,7 @@ TRACE_EVENT(wake_up_new_task,
     ),
 
     TP_fast_assign(
-        __entry->type       = 2; /* FIXME */
+        __entry->type       = CREATE;
         __entry->tsc        = tsc;
         __entry->prev_pid   = current->pid;
         __entry->next_pid   = p->pid;
@@ -213,7 +211,7 @@ TRACE_EVENT(do_exit,
     ),
 
     TP_fast_assign(
-        __entry->type       = 3; /* FIXME */
+        __entry->type       = EXIT;
         __entry->prev_pid   = current->pid;
         __entry->next_pid   = 0;
         __entry->prev_state = current->state;

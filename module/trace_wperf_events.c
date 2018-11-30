@@ -7,8 +7,14 @@
 #include <linux/bitmap.h>
 
 enum {
+    WAIT = 0,
+    WAKEUP,
+    CREATE,
+    EXIT
+};
+
+enum {
     HARDIRQ = NR_SOFTIRQS + 1,
-    KSOFTIRQ,
     KERNEL
 };
 
@@ -120,31 +126,6 @@ on_try_to_wake_up_ent(struct task_struct *p, unsigned int state, int wake_flags)
 }
 
 DECL_CMN_JRP(try_to_wake_up);
-
-/*
- * we cannot loop indefinitely here to avoid userspace starvation,
- * but we also don't want to introduce a worst case 1/HZ latency
- * to the pending events, so lets the scheduler to balance
- * the softirq load for us.
- *
- * __do_softirq          ----------
- *                                 \
- * invoke_softirq        ---------- \__
- *                                  ___ --- ==> wakeup_softirqd
- * raise_softirq_irqoff  ----------/
- *
- * TODO
- * needn't kretprobe? why?
- */
-static void on_wakeup_softirqd_ent(void)
-{
-    struct per_cpu_wperf_data *data;
-    data = &__get_cpu_var(wperf_cpu_data);
-    data->softirqs_nr = KSOFTIRQ;
-    jprobe_return();
-}
-
-DECL_CMN_JRP(wakeup_softirqd);
 
 #define _DECL_SOFTIRQ_KRP(nr, fn, symbol)                          \
 static int                                                         \
@@ -289,7 +270,11 @@ DECL_SOFTIRQ_KRP(RCU_SOFTIRQ, rcu_process_callbacks);
 #define WITH_NODATA_ENTEY    2
 
 /*
- * called by run_ksoftirqd
+ * do_softirq will check softirq_vec's all pending softirq, then run the handlers one
+ * by one, if preempted by hardirq, and more than max_restart's hardirq gen new softirq,
+ * then wakeup ksoftirqd to handle.
+ *
+ * called by run_ksoftirqd or call_softirq (in entry_64.S, which called by do_softirq)
  */
 static int on___do_softirq_ent(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
@@ -306,7 +291,7 @@ static int on___do_softirq_ret(struct kretprobe_instance *ri, struct pt_regs *re
     struct per_cpu_wperf_data *data;
 
     data = &__get_cpu_var(wperf_cpu_data);
-    trace___do_softirq_ret(0, data->softirq_btime, rdtsc_ordered()); /* FIXME */
+    trace___do_softirq_ret(data->softirq_btime, rdtsc_ordered());
 
     return 0;
 }
@@ -401,6 +386,8 @@ DECL_CMN_JRP(do_futex);
  * IO end handler for temporary buffer_heads handling writes to the journal.
  *
  * ext4's jbd2
+ *
+ * FIXME: handle register error, when no ext4
  */
 static void on_journal_end_buffer_io_sync_ent(struct buffer_head *bh, int uptodate)
 {
@@ -425,8 +412,6 @@ DECL_CMN_JRP(journal_end_buffer_io_sync);
  *                          /
  * SYSC_clone    --------- /
  * already have a trace point: trace_sched_wakeup_new/sched:sched_wakeup_new
- * TODO:
- * 1. make sure the infos we need to trace
  */
 static void on_wake_up_new_task_ent(struct task_struct *p)
 {
@@ -543,7 +528,6 @@ DECL_CMN_JRP(__lock_sock);
 static struct jprobe *wperf_jps[] = {
     &__switch_to_jp,
     &try_to_wake_up_jp,
-    &wakeup_softirqd_jp,
     &part_round_stats_jp,
     &futex_wait_queue_me_jp,
     &do_futex_jp,
