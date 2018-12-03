@@ -15,9 +15,9 @@ static void dec_counter(void)
 {
     pthread_mutex_lock(&counter_lock);
     while (counter == 0) {
-        fprintf(stderr, "B running->block\n");
+        // fprintf(stderr, "B running->block\n");
         pthread_cond_wait(&counter_cond, &counter_lock);
-        fprintf(stderr, "B try to wake up A\n");
+        // fprintf(stderr, "B try to wake up A\n");
         pthread_cond_signal(&wait_cond);
     }
     counter -= 1;
@@ -27,9 +27,12 @@ static void dec_counter(void)
 static void inc_counter(void)
 {
     pthread_mutex_lock(&counter_lock);
+    if (counter == 10000)
+        counter = 0;
+
     if (counter == 0) {
-        sleep(10);
-        fprintf(stderr, "C try to wake up B\n");
+        usleep(1000);
+        // fprintf(stderr, "C try to wake up B\n");
         pthread_cond_signal(&counter_cond);
     }
     counter += 1;
@@ -42,9 +45,9 @@ void *thread_wait(void *arg)
     long i;
 
     while(1) {
-        fprintf(stderr, "pthread A runnning->block\n");
+        // fprintf(stderr, "pthread A runnning->block\n");
         pthread_cond_wait(&wait_cond, &wait_lock);
-        fprintf(stderr, "pthread A block->runnable\n");
+        // fprintf(stderr, "pthread A block->runnable\n");
         for (i = 0; i < max; i++) {
             ;
         }

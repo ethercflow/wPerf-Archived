@@ -37,11 +37,11 @@ const (
 	HARDIRQ
 	KSOFTIRQ
 	KERNEL
+	UNKNOWN
 )
 
 const (
-	NONE    = 0
-	UNKNOWN = -100 // TODO: use a better way?
+	NONE = 0
 )
 
 var (
@@ -53,7 +53,6 @@ var (
 	prevStateMap PrevStateMap
 	segMap       SegmentMap
 
-	statMap      StatMap
 	waitForGraph WaitForGraph
 )
 
@@ -64,7 +63,6 @@ func init() {
 	prevStateMap = make(PrevStateMap)
 	segMap = make(SegmentMap)
 
-	statMap = make(StatMap)
 	waitForGraph = make(WaitForGraph)
 }
 
@@ -96,9 +94,9 @@ func Pids(file string) []int {
 	}
 
 	pidList := make([]int, 0)
-	lines := strings.Split(string(data), "\n")
+	lines := strings.Split(string(data), ",")
 	for _, line := range lines {
-		pid, err := strconv.Atoi(line)
+		pid, err := strconv.Atoi(strings.TrimSuffix(line, "\n"))
 		if err != nil {
 			log.Fatalln("Pids: ", err)
 		}
@@ -146,30 +144,26 @@ func (p *PrevStateMap) Init(pl []int, sl []events.Switch) {
 	for _, v := range sl {
 		switch v.Type {
 		case 2: // wake_up_new_task
-			createTimeList[v.Next_pid] = v.Time // TODO: may exist bug?
+			createTimeList[v.NextPid] = v.Time // TODO: may exist bug?
 		case 3: // do_exit
-			exitTimeList[v.Prev_pid] = v.Time // TODO: may exist bug?
+			exitTimeList[v.PrevPid] = v.Time // TODO: may exist bug?
 		}
 	}
 
 	for _, v := range pl {
-		stime := traceSTime
-		etime := traceETime
-
 		t, ok := createTimeList[v]
 		if ok {
 			(*p)[v] = PrevState{t, -1}
-			stime = t
 		} else {
 			(*p)[v] = PrevState{traceSTime, -1}
 		}
 
-		if t, ok := exitTimeList[v]; ok {
-			etime = t
+		t, ok = exitTimeList[v]
+		if ok {
+			(*p)[v] = PrevState{t, -1}
+		} else {
+			(*p)[v] = PrevState{traceETime, -1}
 		}
-
-		statMap[v] = new(Stat)
-		statMap[v].Total = etime - stime
 	}
 }
 
@@ -230,20 +224,6 @@ func GetSegments(pid int) *Segments {
 	return segMap[pid]
 }
 
-type Stat struct {
-	Running  uint64
-	Runnable uint64
-	Blocked  uint64
-	HardIRQ  uint64
-	SoftIRQ  uint64
-	DISKIO   uint64
-	NETIO    uint64
-	Unknown  uint64
-	Total    uint64
-}
-
-type StatMap map[int]*Stat
-
 type WaitForGraph map[string]uint64
 
 // Matching of wait and wakeup events can naturally break a thread’s time into
@@ -253,14 +233,13 @@ type WaitForGraph map[string]uint64
 func BreakIntoSegments(pid int, swl []events.Switch) {
 	ps := GetPrevState(pid)
 	segs := GetSegments(pid)
-	stat := statMap[pid]
 
 	for _, sw := range swl {
 		pt := ps.Timestamp
 		switch sw.Type {
 		case 0: // switch_to
-			if sw.Prev_pid == pid { // switch out
-				if Runnable(sw.Prev_state) {
+			if sw.PrevPid == pid { // switch out
+				if Runnable(sw.PrevState) {
 					ps.UpdateToRunnable(sw.Time)
 				} else {
 					ps.UpdateToStopped(sw.Time)
@@ -279,49 +258,27 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 					segs.Put(pid, RUNNING, pt, stime, NONE)
 					segs.Put(pid, RUNNABLE, stime, etime, NONE)
 					segs.Put(pid, RUNNING, etime, sw.Time, NONE)
-
-					stat.Running += stime - pt
-					stat.SoftIRQ += etime - stime
-					stat.Running += sw.Time - etime
 				} else { // pid not preempt by softirq
 					segs.Put(pid, RUNNING, pt, sw.Time, NONE)
-
-					stat.Running += sw.Time - pt
 				}
 				break
 			}
 
-			if sw.Next_pid == pid { // switch in
+			if sw.NextPid == pid { // switch in
 				segs.Put(pid, RUNNABLE, pt, sw.Time, NONE)
 				ps.UpdateToRunning(sw.Time)
-
-				stat.Running += sw.Time - pt
 			}
 		case 1: // try_to_wake_up: blocked => runnable
-			if sw.Next_pid == pid {
+			if sw.NextPid == pid {
 				if ps.State != BLOCKED { // we need to check this because try_to_wake_up may be the first event
 					continue
 				}
 
 				ps.UpdateToRunnable(sw.Time)
-				if sw.In_whitch_ctx == 0 {
-					segs.Put(pid, BLOCKED, pt, sw.Time, sw.Prev_pid)
-
-					stat.Blocked += sw.Time - pt
+				if sw.InWhichCtx == 0 {
+					segs.Put(pid, BLOCKED, pt, sw.Time, sw.PrevPid)
 				} else {
-					segs.Put(pid, BLOCKED, pt, sw.Time, -sw.In_whitch_ctx)
-
-					switch sw.In_whitch_ctx {
-					case -BLOCK_SOFTIRQ:
-						stat.DISKIO += sw.Time - pt
-					case -NET_RX_SOFTIRQ:
-						stat.NETIO += sw.Time - pt
-					case -HARDIRQ:
-						stat.HardIRQ += sw.Time - pt
-					// TODO: handle softirq
-					default:
-						stat.Unknown += sw.Time - pt
-					}
+					segs.Put(pid, BLOCKED, pt, sw.Time, -sw.InWhichCtx)
 				}
 			}
 		}
@@ -332,20 +289,14 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 	switch ps.State {
 	case RUNNING:
 		segs.Put(pid, RUNNING, ps.Timestamp, traceEtime, NONE)
-
-		stat.Running += traceEtime - ps.Timestamp
 	case RUNNABLE:
 		segs.Put(pid, RUNNABLE, ps.Timestamp, traceEtime, NONE)
-
-		stat.Running += traceEtime - ps.Timestamp
 	default:
 		if t, ok := HasExitTime(pid); ok {
 			_, seg := segs.Floor(t)
 			seg.ETime = t
 		} else {
 			segs.Put(pid, BLOCKED, ps.Timestamp, traceEtime, UNKNOWN)
-
-			stat.Unknown += traceEtime - ps.Timestamp
 		}
 	}
 }
@@ -372,7 +323,7 @@ func Cascade(w *Segment) {
 }
 
 func addWeight(waitID, wakerID int, etime, stime uint64) {
-	k := strconv.Itoa(waitID) + " " + strconv.Itoa(wakerID) + ""
+	k := strconv.Itoa(waitID) + " " + strconv.Itoa(wakerID) + " "
 	if _, ok := waitForGraph[k]; !ok {
 		waitForGraph[k] = 0
 	}
@@ -425,36 +376,6 @@ func findAllWaitingSegments(wakerID int, etime, stime uint64) []*Segment {
 	return nil
 }
 
-func OutputStat(file string) {
-	f, err := os.Create(file)
-	if err != nil {
-		log.Fatalln("Create %s failed: ", file, err)
-	}
-	defer f.Close()
-
-	w := bufio.NewWriter(f)
-
-	for k, v := range prevStateMap {
-		if v.State == -1 {
-			continue
-		}
-		stat := statMap[k]
-		l := fmt.Sprintf("%d %f %f %f %f %f %f %f %f %f",
-			k,
-			float64(stat.Running)/cpuFreq,
-			float64(stat.Runnable)/cpuFreq,
-			float64(stat.Blocked)/cpuFreq,
-			float64(stat.DISKIO)/cpuFreq,
-			float64(stat.NETIO)/cpuFreq,
-			float64(stat.HardIRQ)/cpuFreq,
-			float64(stat.SoftIRQ)/cpuFreq,
-			float64(stat.Unknown)/cpuFreq,
-			float64(stat.Total)/cpuFreq,
-		)
-		fmt.Fprintln(w, l)
-	}
-}
-
 func OutputWaitForGraph(file string) {
 	f, err := os.Create(file)
 	if err != nil {
@@ -470,4 +391,5 @@ func OutputWaitForGraph(file string) {
 		l := fmt.Sprintf("%s%f", k, float64(v)/cpuFreq)
 		fmt.Fprintln(w, l)
 	}
+	w.Flush()
 }

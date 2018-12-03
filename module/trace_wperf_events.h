@@ -42,7 +42,7 @@ TRACE_EVENT(__switch_to,
             __entry->in_which_ctx = KERNEL;
     ),
 
-    TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+    TP_printk("type=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
               " next_state=%ld, in_which_ctx=%d",
               __entry->type, __entry->tsc,
               __entry->prev_pid, __entry->next_pid,
@@ -86,7 +86,7 @@ TRACE_EVENT(try_to_wake_up,
             __entry->in_which_ctx = KERNEL;
     ),
 
-    TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+    TP_printk("type=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
               " next_state=%ld, in_which_ctx=%d",
               __entry->type, __entry->tsc,
               __entry->prev_pid, __entry->next_pid,
@@ -130,7 +130,7 @@ DECLARE_EVENT_CLASS(common_event,
         __entry->tsc  = tsc;
     ),
 
-    TP_printk("tyep=%d, tsc=%llu", __entry->type, __entry->tsc)
+    TP_printk("type=%d, tsc=%llu", __entry->type, __entry->tsc)
 );
 
 DEFINE_EVENT(common_event, futex_wait_queue_me,
@@ -188,7 +188,7 @@ TRACE_EVENT(wake_up_new_task,
         __entry->next_state = p->state;
     ),
 
-    TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+    TP_printk("type=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
               " next_state=%ld",
               __entry->type, __entry->tsc,
               __entry->prev_pid, __entry->next_pid,
@@ -218,7 +218,7 @@ TRACE_EVENT(do_exit,
         __entry->next_state = 0;
     ),
 
-    TP_printk("tyep=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+    TP_printk("type=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
               " next_state=%ld",
               __entry->type, __entry->tsc,
               __entry->prev_pid, __entry->next_pid,
