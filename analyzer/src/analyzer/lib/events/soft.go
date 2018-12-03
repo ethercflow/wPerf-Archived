@@ -20,19 +20,19 @@ func init() {
 
 type Soft struct {
 	CPU   int    `json:"cpu"`
-	STime uint64 `json:"stime"`
-	ETime uint64 `json:"etime"`
+	STime uint64 `json:"begin_time,string"`
+	ETime uint64 `json:"end_time,string"`
 }
 
 type SoftMap map[int]*treemap.Map
 
 func (s *SoftMap) Init(sl []Soft) {
-	for _, v := range sl {
+	for i, v := range sl {
 		_, ok := (*s)[v.CPU]
 		if !ok {
 			(*s)[v.CPU] = treemap.NewWith(utils.UInt64Comparator)
 		}
-		(*s)[v.CPU].Put(v.ETime, v)
+		(*s)[v.CPU].Put(v.ETime, &sl[i])
 	}
 }
 
@@ -48,7 +48,8 @@ func LoadSoft(file string) []Soft {
 		var e Soft
 		err := json.Unmarshal([]byte(l), &e)
 		if err != nil {
-			log.Fatalln("LoadSoft: ", err)
+			log.Println("LoadSoft: ", err)
+			continue
 		}
 		es = append(es, e)
 	}

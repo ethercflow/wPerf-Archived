@@ -9,14 +9,14 @@ import (
 )
 
 type Switch struct {
-	CPU           int    `json:"cpu"`
-	Time          uint64 `json:"time"`
-	Type          int    `json:"type"`
-	Prev_pid      int    `json:"prev_pid"`
-	Next_pid      int    `json:"next_pid"`
-	Prev_state    uint64 `json:"prev_state"`
-	Next_state    uint64 `json:"next_state"`
-	In_whitch_ctx int    `json:"in_whitch_ctx"`
+	CPU        int    `json:"cpu"`
+	Time       uint64 `json:"tsc,string"`
+	Type       int    `json:"type,string"`
+	PrevPid    int    `json:"prev_pid,string"`
+	NextPid    int    `json:"next_pid,string"`
+	PrevState  uint64 `json:"prev_state,string"`
+	NextState  uint64 `json:"next_state,string"`
+	InWhichCtx int    `json:"in_which_ctx,string"`
 }
 
 type byTime []Switch
@@ -33,11 +33,12 @@ func LoadSwitch(file string) []Switch {
 
 	es := make([]Switch, 0)
 	ls := strings.Split(string(bs), "\n")
-	for _, l := range ls {
+	for i, l := range ls {
 		var e Switch
-		err := json.Unmarshal([]byte(l), &e)
+		err := json.Unmarshal([]byte(strings.TrimSuffix(l, "\n")), &e)
 		if err != nil {
-			log.Fatalln("LoadSwitch: ", err)
+			log.Println("LoadSwitch: ", err, "linum: ", i, "line: ", l)
+			continue
 		}
 		es = append(es, e)
 	}
