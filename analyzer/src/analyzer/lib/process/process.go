@@ -296,7 +296,7 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 			_, seg := segs.Floor(t)
 			seg.ETime = t
 		} else {
-			segs.Put(pid, BLOCKED, ps.Timestamp, traceEtime, UNKNOWN)
+			segs.Put(pid, BLOCKED, ps.Timestamp, traceEtime, -UNKNOWN)
 		}
 	}
 }
@@ -385,7 +385,7 @@ func OutputWaitForGraph(file string) {
 
 	w := bufio.NewWriter(f)
 	for k, v := range waitForGraph {
-		if strings.Contains(k, strconv.Itoa(UNKNOWN)) {
+		if strings.Contains(k, strconv.Itoa(-UNKNOWN)) {
 			continue
 		}
 		l := fmt.Sprintf("%s%f", k, float64(v)/cpuFreq)
