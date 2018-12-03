@@ -10,7 +10,24 @@ def run_cmd(cmd, shell=False, input=None):
     p = Popen(cmd, shell=shell, stdin=PIPE, stdout=PIPE, stderr=PIPE)
     return p.communicate(input=input)
 
-def buildRecordPidList(target):
+def getKsoftirqdList():
+    stdout, stderr = run_cmd(["pgrep", "ksoftirqd"])
+    if stderr:
+        logging.fatal("pgrep ksoftirqd failed: %s" % stderr)
+        exit(1)
+    ksoftirqd = stdout.split("\n")
+    return ksoftirqd[0:-1]
+    
+def getKworkerList():
+    stdout, stderr = run_cmd(["pgrep", "kworker"])
+    if stderr:
+        logging.fatal("pgrep kworker failed: %s" % stderr)
+        exit(1)
+    kworker = stdout.split("\n")
+    return kworker[0:-1]
+    
+
+def buildRecordPidList(target, ksoftirqd, kworker):
     ret = []
     
     if not target:
@@ -18,18 +35,8 @@ def buildRecordPidList(target):
         exit(1)
     
     ret.extend(target.split(","))
-    stdout, stderr = run_cmd(["pgrep", "ksoftirqd"])
-    if stderr:
-        logging.fatal("pgrep ksoftirqd failed: %s" % stderr)
-        exit(1)
-    ksoftirqd = stdout.split("\n")
-    ret.extend(ksoftirqd[0:-1])
-    stdout, stderr = run_cmd(["pgrep", "kworker"])
-    if stderr:
-        logging.fatal("pgrep kworker failed: %s" % stderr)
-        exit(1)
-    kworker = stdout.split("\n")
-    ret.extend(kworker[0:-1])
+    ret.extend(ksoftirqd)
+    ret.extend(kworker)
 
     return ret
 
@@ -46,7 +53,29 @@ def cleanup(output):
         logging.fatal("cleanup failed: %s" % stderr)
         exit(1)
 
-def run(filter, disklist, niclist, output, period):
+def output(fname, pids):
+    with open(fname, "w") as f:
+        for p in pids[:-1]:
+            f.write(p + ",")
+        f.write(pids[-1] + "\n")
+
+def record_ksoftirqd(fname, ksoftirqd):
+    output(fname, ksoftirqd)
+
+def record_kworker(fname, kworker):
+    output(fname, kworker)
+
+def record_pids(fname, pidlist):
+    output(fname, pidlist)
+
+def record_cpufreq(fname):
+    stdout, stderr = run_cmd(["lscpu | grep \"GHz\" | awk '{print $NF}' | sed 's/GHz//'"], shell = True)
+    if stderr:
+        logging.fatal("record_cpufreq failed: %s" % stderr)
+        exit(1)
+    output(fname, [stdout.strip("\n")])
+
+def record_events(filter, disklist, niclist, output, period):
     cmd = ["./recorder", "-p", "%s" % filter ]
     if args.disklist:
         cmd.append("-d")
@@ -79,9 +108,16 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    pidlist = buildRecordPidList(args.pidlist)
+    ksoftirqd = getKsoftirqdList()
+    kworker = getKworkerList()
+
+    pidlist = buildRecordPidList(args.pidlist, ksoftirqd, kworker)
     filter = buildFilter(pidlist)
 
     cleanup(args.output)
 
-    run(filter, args.disklist, args.niclist, args.output, args.period)
+    record_events(filter, args.disklist, args.niclist, args.output, args.period)
+    record_ksoftirqd(args.output + "ksoftirqd", ksoftirqd)
+    record_kworker(args.output + "kworker", kworker)
+    record_pids(args.output + "pidlist", pidlist)
+    record_cpufreq(args.output + "cpufreq")
