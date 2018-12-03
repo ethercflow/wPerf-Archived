@@ -24,26 +24,29 @@ def encode(lines, output):
     for line in lines:
         structed = {}
 
-        comm, event, data = line.rsplit(":", 2)
-        task_pid, cpu, sched, timestamp = ' '.join(comm.split()).split(" ")
+        try:
+            comm, event, data = line.rsplit(":", 2)
+            task_pid, cpu, sched, timestamp = ' '.join(comm.split()).split(" ")
 
-        structed["comm"], structed["pid"] = task_pid.rsplit("-", 1)
-        structed["cpu"] = int(cpu.strip("[").strip("]"))
-        structed["irqs_off"] = sched[0]
-        structed["need_resched"] = sched[1]
-        structed["ctx"] = sched[2]
-        structed["preempt_depth"] = sched[3]
-        structed["timestamp"] = timestamp
+            structed["comm"], structed["pid"] = task_pid.rsplit("-", 1)
+            structed["cpu"] = int(cpu.strip("[").strip("]"))
+            structed["irqs_off"] = sched[0]
+            structed["need_resched"] = sched[1]
+            structed["ctx"] = sched[2]
+            structed["preempt_depth"] = sched[3]
+            structed["timestamp"] = timestamp
 
-        struct = data.strip("\n").split(",")
-        for field in struct:
-            field = field.replace(" ", "")
-            k, v = field.split("=")
-            structed[k] = v
-        objs.append(json.JSONEncoder().encode(structed))
+            struct = data.strip("\n").split(",")
+            for field in struct:
+                field = field.replace(" ", "")
+                k, v = field.split("=")
+                structed[k] = v
 
-        output(objs)
+            objs.append(json.JSONEncoder().encode(structed))
+        except:
+            print("ignore bad input %s" % line)
 
+    output(objs)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description = "WPerf events encoder script")
