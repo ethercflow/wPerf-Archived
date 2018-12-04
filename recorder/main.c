@@ -32,7 +32,7 @@ static void init_config(struct config *cf)
 
     cf->output_dir = "/tmp/wperf";
     cf->timeout = 90000;
-    cf->bufsize_kb = "819200";
+    cf->bufsize_kb = "4096";
 }
 
 static void parse_opts(struct config *cf, int argc, char **argv)
@@ -82,7 +82,7 @@ static void usage(void)
             "    -d <disks>      Disk name list seprated by ','\n"
             "    -n <nics>       Nic name list seprated by ','\n"
             "    -o <output>     Output dir default: /tmp/wperf/\n"
-            "    -b <bufsize>    Instance buffer size (kb), Default: 819200"
+            "    -b <bufsize>    Instance buffer size (kb), Default: 4096"
             "",
             progname);
     exit(1);

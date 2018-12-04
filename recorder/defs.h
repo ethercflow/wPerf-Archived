@@ -86,7 +86,7 @@ int recorder_run(struct config *cf, uv_loop_t *loop);
 int record_events(struct recorder *recorder);
 int record_ioworkers(struct recorder *recorder);
 void set_filter_and_enable(struct config *cf);
-void set_instance_bufsize(struct config *cf);
+void set_instances_bufsize(struct config *cf);
 void write_debugfs(uv_buf_t *iov,
                    void (*get_fname_func)(char *dir,
                                           const char *base,

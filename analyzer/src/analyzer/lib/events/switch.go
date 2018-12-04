@@ -33,6 +33,7 @@ func LoadSwitch(file string) []Switch {
 
 	es := make([]Switch, 0)
 	ls := strings.Split(string(bs), "\n")
+	ls = ls[:len(ls)-1]
 	for i, l := range ls {
 		var e Switch
 		err := json.Unmarshal([]byte(strings.TrimSuffix(l, "\n")), &e)

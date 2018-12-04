@@ -34,6 +34,7 @@ int recorder_run(struct config *cf, uv_loop_t *loop)
     setup_event_instances(cf, basedir, &instances[0]);
     setup_ioworkers(cf, &recorder);
 
+    set_instances_bufsize(cf);
     set_filter_and_enable(cf);
 
     err = record_events(&recorder);

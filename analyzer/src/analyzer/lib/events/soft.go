@@ -44,11 +44,12 @@ func LoadSoft(file string) []Soft {
 
 	es := make([]Soft, 0)
 	ls := strings.Split(string(bs), "\n")
-	for _, l := range ls {
+	ls = ls[:len(ls)-1]
+	for i, l := range ls {
 		var e Soft
 		err := json.Unmarshal([]byte(l), &e)
 		if err != nil {
-			log.Println("LoadSoft: ", err)
+			log.Println("LoadSoft: ", err, "linum: ", i, "line: ", l)
 			continue
 		}
 		es = append(es, e)
@@ -63,5 +64,8 @@ func InitSoftContainer(sl []Soft) {
 
 func GetCeilingSoft(cpu int, time uint64) *Soft {
 	_, v := sm[cpu].Ceiling(time)
+	if v == nil {
+		return nil
+	}
 	return v.(*Soft)
 }
