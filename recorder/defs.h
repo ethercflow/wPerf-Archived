@@ -22,6 +22,7 @@ struct config {
     char **instances_in;
     char **instances_out;
     int instances_num;
+    char *bufsize_kb;
 
     /*
      * io worker
@@ -75,6 +76,8 @@ struct recorder {
     int worker_count;
 };
 
+extern const char *basedir;
+extern const char *instances[];
 extern const int instances_num;
 
 void setup_event_instances(struct config *cf, const char *base, const char **p);
@@ -82,6 +85,13 @@ void setup_ioworkers(struct config *cf, struct recorder *recorder);
 int recorder_run(struct config *cf, uv_loop_t *loop);
 int record_events(struct recorder *recorder);
 int record_ioworkers(struct recorder *recorder);
+void set_filter_and_enable(struct config *cf);
+void set_instances_bufsize(struct config *cf);
+void write_debugfs(uv_buf_t *iov,
+                   void (*get_fname_func)(char *dir,
+                                          const char *base,
+                                          const char *instance,
+                                          const char *event));
 
 static inline void create_instance_dir(char *dir, uv_fs_t *req,
                                        const char *base, const char *name)
@@ -98,6 +108,11 @@ static inline char *get_instance_input(char *dir, const char *base,
 {
     snprintf(dir, MAX_PATH_LEN, "%s/%s/trace_pipe", base, name);
     return strdup(dir);
+}
+
+static inline void get_instance_bufsize(char *dir, const char *base, const char *name)
+{
+    snprintf(dir, MAX_PATH_LEN, "%s/%s/buffer_size_kb", base, name);
 }
 
 static inline void create_instance_output(char *dir, uv_fs_t *req,
@@ -127,6 +142,5 @@ static inline void get_instance_enable(char *dir, const char *base,
 {
     snprintf(dir, MAX_PATH_LEN, "%s/%s/events/wperf/%s/enable", base, instance, event);
 }
-
 
 #endif // __DEFS_H_

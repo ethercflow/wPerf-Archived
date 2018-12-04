@@ -32,13 +32,14 @@ static void init_config(struct config *cf)
 
     cf->output_dir = "/tmp/wperf";
     cf->timeout = 90000;
+    cf->bufsize_kb = "4096";
 }
 
 static void parse_opts(struct config *cf, int argc, char **argv)
 {
     int opt;
 
-    while (-1 != (opt = getopt(argc, argv, "p:P:hd:n:o:"))) {
+    while (-1 != (opt = getopt(argc, argv, "p:P:hd:n:o:b:"))) {
         switch (opt) {
             case 'p':
                 cf->pid_list = optarg;
@@ -58,6 +59,9 @@ static void parse_opts(struct config *cf, int argc, char **argv)
             case 'o':
                 cf->output_dir = optarg;
                 break;
+            case 'b':
+                cf->bufsize_kb = optarg;
+                break;
             default:
                 usage();
         }
@@ -72,12 +76,13 @@ static void usage(void)
             "\n"
             "Options:\n"
             "\n"
-            "    -p <pids>      Pid list eg: common_pid == 123 || common_pid == 345"
-            "    -P <period>    Default: 90000 (90s)\n"
-            "    -h             Show this help message.\n"
-            "    -d <disks>     Disk name list seprated by ','\n"
-            "    -n <nics>      Nic name list seprated by ','\n"
-            "    -o <output>    Output dir default: /tmp/wperf/\n"
+            "    -p <pids>       Pid list eg: common_pid == 123 || common_pid == 345"
+            "    -P <period>     Default: 90000 (90s)\n"
+            "    -h              Show this help message.\n"
+            "    -d <disks>      Disk name list seprated by ','\n"
+            "    -n <nics>       Nic name list seprated by ','\n"
+            "    -o <output>     Output dir default: /tmp/wperf/\n"
+            "    -b <bufsize>    Instance buffer size (kb), Default: 4096"
             "",
             progname);
     exit(1);
