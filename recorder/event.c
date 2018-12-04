@@ -55,10 +55,7 @@ static void on_write(uv_fs_t *req)
         goto cleanup;
     }
 
-    if (event->recorder->expired) {
-        goto cleanup;
-    }
-
+    event->iov.len = 4096;
     uv_fs_read(event->loop, &event->req.read, event->fd[0],
                &event->iov, 1, -1, on_read);
     return;
@@ -73,12 +70,13 @@ static void on_read(uv_fs_t *req)
 
     event = container_of(req, struct event_ctx, req);
 
-    if (event->recorder->expired)
-        goto cleanup;
-
     if (req->result <= 0) {
         if (req->result != UV_EAGAIN) {
             fprintf(stderr, "Read error: %s\n", uv_strerror(req->result));
+            goto cleanup;
+        }
+
+        if (event->recorder->expired) {
             goto cleanup;
         }
 

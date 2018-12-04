@@ -97,7 +97,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description = "WPerf events recorder script")
     parser.add_argument("-p", "--pidlist", action = "store", default = None,
                         help = "The target process's worker thread list, seprated by ','")
-    parser.add_argument("-P", "--period", action = "store", default = 90000,
+    parser.add_argument("-P", "--period", action = "store", default = "90000",
                         help = "The recorder run period.")
     parser.add_argument("-d", "--disklist", action = "store", default = None,
                         help = "Disk name list seprated by ','.")

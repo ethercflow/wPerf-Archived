@@ -195,6 +195,9 @@ func (s *Segments) Put(pid, state int, stime, etime uint64, waitFor int) {
 
 func (s *Segments) Floor(stime uint64) (uint64, *Segment) {
 	k, v := s.tm.Floor(stime)
+	if v == nil {
+		return 0, nil
+	}
 	return k.(uint64), v.(*Segment)
 }
 
