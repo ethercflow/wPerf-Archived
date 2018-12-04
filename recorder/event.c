@@ -1,5 +1,40 @@
 #include "defs.h"
 
+const char *basedir = "/sys/kernel/debug/tracing/instances";
+
+const char *instances[] = {
+    "switch",
+    "softirq",
+    "wait",
+    NULL
+};
+const int instances_num = 3;
+
+static const char *switch_events[] = {
+    "__switch_to",
+    "try_to_wake_up",
+    "wake_up_new_task",
+    "do_exit",
+    NULL
+};
+
+static const char *softirq_events[] = {
+    "__do_softirq_ret",
+    NULL
+};
+static const char *wait_events[] = {
+    "futex_wait_queue_me",
+    "do_futex",
+    "__lock_sock",
+    NULL
+};
+
+static const char **pevents[] = {
+    &switch_events[0],
+    &softirq_events[0],
+    &wait_events[0],
+};
+
 static void on_read(uv_fs_t *req);
 
 static inline void cleanup(struct event_ctx *event)
@@ -137,4 +172,81 @@ void setup_event_instances(struct config *cf, const char *base, const char **p)
     }
 
     uv_fs_req_cleanup(&req);
+}
+
+static void __write_debugfs(char *fname, uv_buf_t *iov)
+{
+    uv_fs_t req;
+    uv_file fd;
+    int r;
+
+    fd = uv_fs_open(NULL, &req, fname, O_RDWR, 0644, NULL);
+    if (fd < 0) {
+        fprintf(stderr, "open %s failed: %s\n", fname, uv_strerror(fd));
+        exit(1);
+    }
+    r = uv_fs_write(NULL, &req, fd, iov, 1, -1, NULL);
+    if (r < 0) {
+        fprintf(stderr, "set %s failed: %s\n", fname, uv_strerror(r));
+        exit(1);
+    }
+}
+
+void write_debugfs(uv_buf_t *iov,
+                   void (*get_fname_func)(char *dir,
+                                          const char *base,
+                                          const char *instance,
+                                          const char *event))
+{
+    char fname[MAX_PATH_LEN];
+    const char **p;
+    const char **q;
+    int i;
+
+    p = &instances[0];
+    i = 0;
+    while (*p) {
+        q = pevents[i];
+        while (*q) {
+            get_fname_func(fname, basedir, *p, *q);
+            __write_debugfs(fname, iov);
+            q++;
+        }
+        p++;
+        i++;
+    }
+}
+
+void set_filter_and_enable(struct config *cf)
+{
+    uv_buf_t iov;
+    char *plist;
+    char *enable = "1";
+
+    plist = strdup(cf->pid_list);
+    iov = uv_buf_init(plist, strlen(plist) + 1);
+    write_debugfs(&iov, get_instance_filter);
+    free(plist);
+
+    iov = uv_buf_init(enable, strlen(enable) + 1);
+    write_debugfs(&iov, get_instance_enable);
+}
+
+void set_instance_bufsize(struct config *cf)
+{
+    char fname[MAX_PATH_LEN];
+    uv_buf_t iov;
+    char *bufsize_kb;
+    const char **p;
+
+    bufsize_kb = strdup(cf->bufsize_kb);
+    iov = uv_buf_init(bufsize_kb, strlen(bufsize_kb) + 1);
+
+    p = &instances[0];
+    while (*p) {
+        get_instance_bufsize(fname, basedir, *p);
+        __write_debugfs(fname, &iov);
+    }
+
+    free(bufsize_kb);
 }
