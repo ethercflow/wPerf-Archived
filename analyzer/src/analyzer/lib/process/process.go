@@ -35,7 +35,6 @@ const (
 	NR_SOFTIRQS
 
 	HARDIRQ
-	KSOFTIRQ
 	KERNEL
 	UNKNOWN
 )
@@ -182,7 +181,6 @@ type Segment struct {
 	STime   uint64
 	ETime   uint64
 	WaitFor int
-	Overlap []int
 }
 
 type Segments struct {
@@ -190,7 +188,7 @@ type Segments struct {
 }
 
 func (s *Segments) Put(pid, state int, stime, etime uint64, waitFor int) {
-	s.tm.Put(stime, &Segment{pid, state, stime, etime, waitFor, make([]int, 0)})
+	s.tm.Put(stime, &Segment{pid, state, stime, etime, waitFor})
 }
 
 func (s *Segments) Floor(stime uint64) (uint64, *Segment) {
@@ -278,7 +276,7 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 				}
 
 				ps.UpdateToRunnable(sw.Time)
-				if sw.InWhichCtx == 0 {
+				if sw.InWhichCtx == KERNEL {
 					segs.Put(pid, BLOCKED, pt, sw.Time, sw.PrevPid)
 				} else {
 					segs.Put(pid, BLOCKED, pt, sw.Time, -sw.InWhichCtx)
@@ -309,8 +307,6 @@ func Cascade(w *Segment) {
 	if w.State != BLOCKED {
 		return
 	}
-
-	w.Overlap = append(w.Overlap, w.Pid)
 
 	addWeight(w.Pid, w.WaitFor, w.ETime, w.STime)
 	segs := findAllWaitingSegments(w.WaitFor, w.ETime, w.STime)
@@ -352,17 +348,6 @@ func findAllWaitingSegments(wakerID int, etime, stime uint64) []*Segment {
 			// cascade will align waitSeg's stime with wID, I'm not sure the
 			// affect to the waitSeg's cascade, so create a copy for align
 			waitSeg := *seg
-			copy(waitSeg.Overlap, seg.Overlap)
-			contained := false
-			for _, pid := range waitSeg.Overlap {
-				if pid == wakerID {
-					contained = true
-					break
-				}
-			}
-			if !contained {
-				waitSeg.Overlap = append(waitSeg.Overlap, wakerID)
-			}
 			waitSegs = append(waitSegs, &waitSeg)
 		}
 
@@ -370,7 +355,7 @@ func findAllWaitingSegments(wakerID int, etime, stime uint64) []*Segment {
 			break
 		}
 
-		_, seg = segs.Ceiling(stime + 1) // TODO: make sure +1 is needed
+		_, seg = segs.Ceiling(seg.STime + 1)
 		if seg == nil || seg.STime >= etime {
 			break
 		}
