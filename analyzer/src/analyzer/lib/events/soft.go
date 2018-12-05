@@ -63,7 +63,11 @@ func InitSoftContainer(sl []Soft) {
 }
 
 func GetCeilingSoft(cpu int, time uint64) *Soft {
-	_, v := sm[cpu].Ceiling(time)
+	m := sm[cpu]
+	if m == nil {
+		return nil
+	}
+	_, v := m.Ceiling(time)
 	if v == nil {
 		return nil
 	}
