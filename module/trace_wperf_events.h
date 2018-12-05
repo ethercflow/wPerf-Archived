@@ -29,8 +29,8 @@ TRACE_EVENT(__switch_to,
 
         __entry->type       = WAIT;
         __entry->tsc        = tsc;
-        memcpy(__entry->prev_comm, prev->comm, TASK_COMM_LEN);
-        memcpy(__entry->next_comm, next->comm, TASK_COMM_LEN);
+        memcpy(__entry->prev_comm, prev_p->comm, TASK_COMM_LEN);
+        memcpy(__entry->next_comm, next_p->comm, TASK_COMM_LEN);
         __entry->prev_pid   = prev_p->pid;
         __entry->next_pid   = next_p->pid;
         __entry->prev_state = prev_p->state;
@@ -79,7 +79,7 @@ TRACE_EVENT(try_to_wake_up,
         __entry->type       = WAKEUP;
         __entry->tsc        = tsc;
         memcpy(__entry->prev_comm, current->comm, TASK_COMM_LEN);
-        memcpy(__entry->next_comm, next->comm, TASK_COMM_LEN);
+        memcpy(__entry->next_comm, p->comm, TASK_COMM_LEN);
         __entry->prev_pid   = current->pid;
         __entry->next_pid   = p->pid;
         __entry->prev_state = current->state;
@@ -111,19 +111,19 @@ TRACE_EVENT(__do_softirq_ret,
     TP_ARGS(begin_time, end_time),
 
     TP_STRUCT__entry(
-        __array(char, comm, TASK_COMM_LEN)
+        __array(char, prev_comm, TASK_COMM_LEN)
         __field(u64, begin_time)
         __field(u64, end_time)
     ),
 
     TP_fast_assign(
-        memcpy(__entry->comm, current->comm, TASK_COMM_LEN);
+        memcpy(__entry->prev_comm, current->comm, TASK_COMM_LEN);
         __entry->begin_time = begin_time;
         __entry->end_time = end_time;
     ),
 
     TP_printk("prev_comm=%s, begin_time=%llu, end_time=%llu",
-              __entry->comm, __entry->begin_time, __entry->end_time)
+              __entry->prev_comm, __entry->begin_time, __entry->end_time)
 );
 
 DECLARE_EVENT_CLASS(common_event,
@@ -198,7 +198,7 @@ TRACE_EVENT(wake_up_new_task,
         __entry->type       = CREATE;
         __entry->tsc        = tsc;
         memcpy(__entry->prev_comm, current->comm, TASK_COMM_LEN);
-        memcpy(__entry->next_comm, next->comm, TASK_COMM_LEN);
+        memcpy(__entry->next_comm, p->comm, TASK_COMM_LEN);
         __entry->prev_pid   = current->pid;
         __entry->next_pid   = p->pid;
         __entry->prev_state = current->state;

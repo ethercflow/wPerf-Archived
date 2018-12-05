@@ -25,7 +25,7 @@ def encode(lines, output):
         structed = {}
 
         try:
-            comm, event, data = line.rsplit(":", 2)
+            comm, event, data = line.rsplit(": ", 2)
             task_pid, cpu, sched, timestamp = ' '.join(comm.split()).split(" ")
 
             structed["comm"], structed["pid"] = task_pid.rsplit("-", 1)

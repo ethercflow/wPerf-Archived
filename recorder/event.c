@@ -5,10 +5,9 @@ const char *basedir = "/sys/kernel/debug/tracing/instances";
 const char *instances[] = {
     "switch",
     "softirq",
-    "wait",
     NULL
 };
-const int instances_num = 3;
+const int instances_num = 2;
 
 static const char *switch_events[] = {
     "__switch_to",
@@ -22,17 +21,10 @@ static const char *softirq_events[] = {
     "__do_softirq_ret",
     NULL
 };
-static const char *wait_events[] = {
-    "futex_wait_queue_me",
-    "do_futex",
-    "__lock_sock",
-    NULL
-};
 
 static const char **pevents[] = {
     &switch_events[0],
     &softirq_events[0],
-    &wait_events[0],
 };
 
 static void on_read(uv_fs_t *req);
@@ -186,6 +178,11 @@ static void __write_debugfs(char *fname, uv_buf_t *iov)
     r = uv_fs_write(NULL, &req, fd, iov, 1, -1, NULL);
     if (r < 0) {
         fprintf(stderr, "set %s failed: %s\n", fname, uv_strerror(r));
+        exit(1);
+    }
+    r = uv_fs_close(NULL, &req, fd, NULL);
+    if (r < 0) {
+        fprintf(stderr, "close %s failed: %s\n", fname, uv_strerror(r));
         exit(1);
     }
 }
