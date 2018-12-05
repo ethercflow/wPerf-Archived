@@ -15,6 +15,8 @@ TRACE_EVENT(__switch_to,
     TP_STRUCT__entry(
         __field(int,   type)
         __field(u64,   tsc)
+        __array(char,  prev_comm, TASK_COMM_LEN)
+        __array(char,  next_comm, TASK_COMM_LEN)
         __field(pid_t, prev_pid)
         __field(pid_t, next_pid)
         __field(long,  prev_state)
@@ -27,6 +29,8 @@ TRACE_EVENT(__switch_to,
 
         __entry->type       = WAIT;
         __entry->tsc        = tsc;
+        memcpy(__entry->prev_comm, prev->comm, TASK_COMM_LEN);
+        memcpy(__entry->next_comm, next->comm, TASK_COMM_LEN);
         __entry->prev_pid   = prev_p->pid;
         __entry->next_pid   = next_p->pid;
         __entry->prev_state = prev_p->state;
@@ -42,9 +46,10 @@ TRACE_EVENT(__switch_to,
             __entry->in_which_ctx = KERNEL;
     ),
 
-    TP_printk("type=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+    TP_printk("type=%d, tsc=%llu, prev_comm=%s, next_comm=%s, prev_pid=%d, next_pid=%d, prev_state=%ld,"
               " next_state=%ld, in_which_ctx=%d",
               __entry->type, __entry->tsc,
+              __entry->prev_comm, __entry->next_comm,
               __entry->prev_pid, __entry->next_pid,
               __entry->prev_state, __entry->next_state,
               __entry->in_which_ctx)
@@ -59,6 +64,8 @@ TRACE_EVENT(try_to_wake_up,
     TP_STRUCT__entry(
         __field(int,   type)
         __field(u64,   tsc)
+        __array(char,  prev_comm, TASK_COMM_LEN)
+        __array(char,  next_comm, TASK_COMM_LEN)
         __field(pid_t, prev_pid)
         __field(pid_t, next_pid)
         __field(long,  prev_state)
@@ -71,6 +78,8 @@ TRACE_EVENT(try_to_wake_up,
 
         __entry->type       = WAKEUP;
         __entry->tsc        = tsc;
+        memcpy(__entry->prev_comm, current->comm, TASK_COMM_LEN);
+        memcpy(__entry->next_comm, next->comm, TASK_COMM_LEN);
         __entry->prev_pid   = current->pid;
         __entry->next_pid   = p->pid;
         __entry->prev_state = current->state;
@@ -86,9 +95,10 @@ TRACE_EVENT(try_to_wake_up,
             __entry->in_which_ctx = KERNEL;
     ),
 
-    TP_printk("type=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+    TP_printk("type=%d, tsc=%llu, prev_comm=%s, next_comm=%s, prev_pid=%d, next_pid=%d, prev_state=%ld,"
               " next_state=%ld, in_which_ctx=%d",
               __entry->type, __entry->tsc,
+              __entry->prev_comm, __entry->next_comm,
               __entry->prev_pid, __entry->next_pid,
               __entry->prev_state, __entry->next_state,
               __entry->in_which_ctx)
@@ -101,17 +111,19 @@ TRACE_EVENT(__do_softirq_ret,
     TP_ARGS(begin_time, end_time),
 
     TP_STRUCT__entry(
+        __array(char, comm, TASK_COMM_LEN)
         __field(u64, begin_time)
         __field(u64, end_time)
     ),
 
     TP_fast_assign(
+        memcpy(__entry->comm, current->comm, TASK_COMM_LEN);
         __entry->begin_time = begin_time;
         __entry->end_time = end_time;
     ),
 
-    TP_printk("begin_time=%llu, end_time=%llu",
-              __entry->begin_time, __entry->end_time)
+    TP_printk("prev_comm=%s, begin_time=%llu, end_time=%llu",
+              __entry->comm, __entry->begin_time, __entry->end_time)
 );
 
 DECLARE_EVENT_CLASS(common_event,
@@ -173,26 +185,34 @@ TRACE_EVENT(wake_up_new_task,
     TP_STRUCT__entry(
         __field(int,   type)
         __field(u64,   tsc)
+        __array(char,  prev_comm, TASK_COMM_LEN)
+        __array(char,  next_comm, TASK_COMM_LEN)
         __field(pid_t, prev_pid)
         __field(pid_t, next_pid)
         __field(long,  prev_state)
         __field(long,  next_state)
+        __field(int,   in_which_ctx)
     ),
 
     TP_fast_assign(
         __entry->type       = CREATE;
         __entry->tsc        = tsc;
+        memcpy(__entry->prev_comm, current->comm, TASK_COMM_LEN);
+        memcpy(__entry->next_comm, next->comm, TASK_COMM_LEN);
         __entry->prev_pid   = current->pid;
         __entry->next_pid   = p->pid;
         __entry->prev_state = current->state;
         __entry->next_state = p->state;
+        __entry->in_which_ctx = KERNEL;
     ),
 
-    TP_printk("type=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
-              " next_state=%ld",
+    TP_printk("type=%d, tsc=%llu, prev_comm=%s, next_comm=%s, prev_pid=%d, next_pid=%d, prev_state=%ld,"
+              " next_state=%ld, in_which_ctx=%d",
               __entry->type, __entry->tsc,
+              __entry->prev_comm, __entry->next_comm,
               __entry->prev_pid, __entry->next_pid,
-              __entry->prev_state, __entry->next_state)
+              __entry->prev_state, __entry->next_state,
+              __entry->in_which_ctx)
 );
 
 TRACE_EVENT(do_exit,
@@ -204,25 +224,33 @@ TRACE_EVENT(do_exit,
     TP_STRUCT__entry(
         __field(int,   type)
         __field(u64,   tsc)
+        __array(char,  prev_comm, TASK_COMM_LEN)
+        __array(char,  next_comm, TASK_COMM_LEN)
         __field(pid_t, prev_pid)
         __field(pid_t, next_pid)
         __field(long,  prev_state)
         __field(long,  next_state)
+        __field(int,   in_which_ctx)
     ),
 
     TP_fast_assign(
         __entry->type       = EXIT;
+        memcpy(__entry->prev_comm, current->comm, TASK_COMM_LEN);
+        memcpy(__entry->next_comm, "swapper", TASK_COMM_LEN);
         __entry->prev_pid   = current->pid;
         __entry->next_pid   = 0;
         __entry->prev_state = current->state;
         __entry->next_state = 0;
+        __entry->in_which_ctx = KERNEL;
     ),
 
-    TP_printk("type=%d, tsc=%llu, prev_pid=%d, next_pid=%d, prev_state=%ld,"
-              " next_state=%ld",
+    TP_printk("type=%d, tsc=%llu, prev_comm=%s, next_comm=%s,  prev_pid=%d, next_pid=%d, prev_state=%ld,"
+              " next_state=%ld, in_which_ctx=%d",
               __entry->type, __entry->tsc,
+              __entry->prev_comm, __entry->next_comm,
               __entry->prev_pid, __entry->next_pid,
-              __entry->prev_state, __entry->next_state)
+              __entry->prev_state, __entry->next_state,
+              __entry->in_which_ctx)
 );
 
 DEFINE_EVENT(common_event, __lock_sock,

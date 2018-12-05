@@ -10,6 +10,7 @@ def run_cmd(cmd, shell=False, input=None):
     p = Popen(cmd, shell=shell, stdin=PIPE, stdout=PIPE, stderr=PIPE)
     return p.communicate(input=input)
 
+# no use
 def getKsoftirqdList():
     stdout, stderr = run_cmd(["pgrep", "ksoftirqd"])
     if stderr:
@@ -18,6 +19,7 @@ def getKsoftirqdList():
     ksoftirqd = stdout.split("\n")
     return ksoftirqd[0:-1]
     
+# no use
 def getKworkerList():
     stdout, stderr = run_cmd(["pgrep", "kworker"])
     if stderr:
@@ -27,7 +29,7 @@ def getKworkerList():
     return kworker[0:-1]
     
 
-def buildRecordPidList(target, ksoftirqd, kworker):
+def buildRecordPidList(target):
     ret = []
     
     if not target:
@@ -35,8 +37,6 @@ def buildRecordPidList(target, ksoftirqd, kworker):
         exit(1)
     
     ret.extend(target.split(","))
-    ret.extend(ksoftirqd)
-    ret.extend(kworker)
 
     return ret
 
@@ -45,6 +45,7 @@ def buildFilter(pidlist):
     for i in pidlist[:-1]:
         filter += "common_pid == %s || " % i
     filter += "common_pid == %s" % pidlist[-1]
+    filter += " || prev_comm ~ ksoftirqd* || prev_comm ~ kworker*"
     return filter
 
 def cleanup(output):
@@ -108,10 +109,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ksoftirqd = getKsoftirqdList()
-    kworker = getKworkerList()
-
-    pidlist = buildRecordPidList(args.pidlist, ksoftirqd, kworker)
+    pidlist = buildRecordPidList(args.pidlist)
     filter = buildFilter(pidlist)
 
     cleanup(args.output)
