@@ -27,7 +27,7 @@ def getKworkerList():
     return kworker[0:-1]
     
 
-def buildRecordPidList(target, ksoftirqd, kworker):
+def buildRecordPidList(target):
     ret = []
     
     if not target:
@@ -35,8 +35,6 @@ def buildRecordPidList(target, ksoftirqd, kworker):
         exit(1)
     
     ret.extend(target.split(","))
-    ret.extend(ksoftirqd)
-    ret.extend(kworker)
 
     return ret
 
@@ -45,6 +43,7 @@ def buildFilter(pidlist):
     for i in pidlist[:-1]:
         filter += "common_pid == %s || " % i
     filter += "common_pid == %s" % pidlist[-1]
+    filter += " || prev_comm ~ ksoftirqd* || prev_comm ~ kworker*"
     return filter
 
 def cleanup(output):
@@ -65,8 +64,12 @@ def record_ksoftirqd(fname, ksoftirqd):
 def record_kworker(fname, kworker):
     output(fname, kworker)
 
-def record_pids(fname, pidlist):
-    output(fname, pidlist)
+def record_pids(fname, pidlist, ksoftirqd, kworker):
+    l = []
+    l.extend(pidlist)
+    l.extend(ksoftirqd)
+    l.extend(kworker)
+    output(fname, l)
 
 def record_cpufreq(fname):
     stdout, stderr = run_cmd(["lscpu | grep \"GHz\" | awk '{print $NF}' | sed 's/GHz//'"], shell = True)
@@ -110,8 +113,7 @@ if __name__ == "__main__":
 
     ksoftirqd = getKsoftirqdList()
     kworker = getKworkerList()
-
-    pidlist = buildRecordPidList(args.pidlist, ksoftirqd, kworker)
+    pidlist = buildRecordPidList(args.pidlist)
     filter = buildFilter(pidlist)
 
     cleanup(args.output)
@@ -119,5 +121,5 @@ if __name__ == "__main__":
     record_events(filter, args.disklist, args.niclist, args.output, args.period)
     record_ksoftirqd(args.output + "ksoftirqd", ksoftirqd)
     record_kworker(args.output + "kworker", kworker)
-    record_pids(args.output + "pidlist", pidlist)
+    record_pids(args.output + "pidlist", pidlist, ksoftirqd, kworker)
     record_cpufreq(args.output + "cpufreq")
