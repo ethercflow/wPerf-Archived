@@ -43,7 +43,7 @@ TRACE_EVENT(__switch_to,
         else if (in_serving_softirq()) /* Are we currently processing softirq? */
             __entry->in_which_ctx = -data->softirqs_nr;
         else
-            __entry->in_which_ctx = KERNEL;
+            __entry->in_which_ctx = PROCESS;
     ),
 
     TP_printk("type=%d, tsc=%llu, prev_comm=%s, next_comm=%s, prev_pid=%d, next_pid=%d, prev_state=%ld,"
@@ -92,7 +92,7 @@ TRACE_EVENT(try_to_wake_up,
         else if (in_serving_softirq()) /* Are we currently processing softirq? */
             __entry->in_which_ctx = data->softirqs_nr;
         else
-            __entry->in_which_ctx = KERNEL;
+            __entry->in_which_ctx = PROCESS;
     ),
 
     TP_printk("type=%d, tsc=%llu, prev_comm=%s, next_comm=%s, prev_pid=%d, next_pid=%d, prev_state=%ld,"
@@ -203,7 +203,7 @@ TRACE_EVENT(wake_up_new_task,
         __entry->next_pid   = p->pid;
         __entry->prev_state = current->state;
         __entry->next_state = p->state;
-        __entry->in_which_ctx = KERNEL;
+        __entry->in_which_ctx = PROCESS;
     ),
 
     TP_printk("type=%d, tsc=%llu, prev_comm=%s, next_comm=%s, prev_pid=%d, next_pid=%d, prev_state=%ld,"
@@ -241,7 +241,7 @@ TRACE_EVENT(do_exit,
         __entry->next_pid   = 0;
         __entry->prev_state = current->state;
         __entry->next_state = 0;
-        __entry->in_which_ctx = KERNEL;
+        __entry->in_which_ctx = PROCESS;
     ),
 
     TP_printk("type=%d, tsc=%llu, prev_comm=%s, next_comm=%s,  prev_pid=%d, next_pid=%d, prev_state=%ld,"
