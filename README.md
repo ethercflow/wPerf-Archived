@@ -10,7 +10,6 @@ Check the paper for more details: [wPerf: Generic Off-CPU Analysis to Identify B
 ## Requirements
 - [Kernel](http://www.kernel.org/): Only tested on [CentOS Linux release 7.5.1804](https://www.centos.org)
   Please make sure the KProbe and CONFIG_SCHEDSTATS features are enabled.
-- [Python 2](http://www.python.org/)
 - [libuv](https://github.com/libuv/libuv) Tested with v1.x
 
 ## Deploy
@@ -28,13 +27,18 @@ default the output dir is /tmp/wperf, record period is 90s.
 Run
 
 ``` shell
-sudo bin/recorder.py -p tid1,tid2,tid3
-bin/encorder.py -i /tmp/wperf/softirq/output -o softirq
-bin/encorder.py -i /tmp/wperf/switch/output -o switch
+cd bin
+sudo ./recorder.py -p tid1,tid2,tid3
+./encorder.py -i /tmp/wperf/softirq/output -o softirq
+./encorder.py -i /tmp/wperf/switch/output -o switch
 cp -a /tmp/wperf/cpufreq .
 cp -a /tmp/wperf/pidlist .
-bin/analyzer -cpufreq=cpufreq -pids=pidlist -switch=switch -softirq=softirq
+./analyzer -cpufreq=cpufreq -pids=pidlist -switch=switch -softirq=softirq
 ```
 
-After analyzer, you can get a file waitfor, open it to see if there is a knot.
-In the future, I'll graphs the results.
+After analyzer, you can get a waitfor file, open it to see if there is a knot.
+In the future, I'll graphs the results. Currently, you can update waitfor to
+[online graph explorer](https://osusyslab.github.io/wperf/) with your result
+file and check out the bottleneck in that knot. (You'd better filter kworker
+info before upload)
+
