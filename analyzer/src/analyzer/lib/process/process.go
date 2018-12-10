@@ -401,6 +401,7 @@ func OutputWaitForGraph(file string) {
 	defer f.Close()
 
 	w := bufio.NewWriter(f)
+	fmt.Fprintln(w, "source,target,value")
 	for k, v := range waitForGraph {
 		if strings.Contains(k, strconv.Itoa(-UNKNOWN)) {
 			continue
