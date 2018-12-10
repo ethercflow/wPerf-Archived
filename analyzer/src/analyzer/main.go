@@ -37,6 +37,7 @@ func main() {
     switchList = events.LoadSwitch(switchEventFile)
     softList = events.LoadSoft(softirqEventFile)
 
+    process.InitCommMap(switchList)
     process.InitPrevStates(pidList, switchList)
     events.InitSoftContainer(softList)
 

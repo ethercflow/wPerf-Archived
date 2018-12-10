@@ -35,7 +35,7 @@ const (
 	NR_SOFTIRQS
 
 	HARDIRQ
-	KERNEL
+	PROCESS
 	UNKNOWN
 )
 
@@ -51,6 +51,7 @@ var (
 
 	prevStateMap PrevStateMap
 	segMap       SegmentMap
+	commMap      CommMap
 
 	waitForGraph WaitForGraph
 )
@@ -61,6 +62,7 @@ func init() {
 
 	prevStateMap = make(PrevStateMap)
 	segMap = make(SegmentMap)
+	commMap = make(CommMap)
 
 	waitForGraph = make(WaitForGraph)
 }
@@ -71,6 +73,10 @@ func initSegMap(pl []int) {
 
 func InitPrevStates(pl []int, sl []events.Switch) {
 	prevStateMap.Init(pl, sl)
+}
+
+func InitCommMap(sl []events.Switch) {
+	commMap.Init(sl)
 }
 
 func ReadCPUFreq(file string) {
@@ -136,7 +142,6 @@ func Runnable(state uint64) bool {
 type PrevStateMap map[int]PrevState
 
 func (p *PrevStateMap) Init(pl []int, sl []events.Switch) {
-
 	traceSTime := sl[0].Time
 	traceETime := sl[len(sl)-1].Time
 
@@ -173,6 +178,23 @@ func GetPrevState(pid int) PrevState {
 func HasExitTime(pid int) (uint64, bool) {
 	t, ok := exitTimeList[pid]
 	return t, ok
+}
+
+type CommMap map[int]string
+
+func (c *CommMap) Init(sl []events.Switch) {
+	for _, v := range sl {
+		if _, ok := (*c)[v.PrevPid]; !ok {
+			(*c)[v.PrevPid] = v.PrevComm
+		}
+		if _, ok := (*c)[v.NextPid]; !ok {
+			(*c)[v.NextPid] = v.NextComm
+		}
+	}
+}
+
+func GetComm(pid int) string {
+	return commMap[pid]
 }
 
 type Segment struct {
@@ -276,7 +298,7 @@ func BreakIntoSegments(pid int, swl []events.Switch) {
 				}
 
 				ps.UpdateToRunnable(sw.Time)
-				if sw.InWhichCtx == KERNEL {
+				if sw.InWhichCtx == PROCESS {
 					segs.Put(pid, BLOCKED, pt, sw.Time, sw.PrevPid)
 				} else {
 					segs.Put(pid, BLOCKED, pt, sw.Time, -sw.InWhichCtx)
@@ -322,7 +344,14 @@ func Cascade(w *Segment) {
 }
 
 func addWeight(waitID, wakerID int, etime, stime uint64) {
-	k := strconv.Itoa(waitID) + " " + strconv.Itoa(wakerID) + " "
+	waitComm := GetComm(waitID)
+	wakerComm := GetComm(wakerID)
+
+	if waitComm == "" || wakerComm == "" {
+		return
+	}
+
+	k := waitComm + "," + wakerComm + ","
 	if _, ok := waitForGraph[k]; !ok {
 		waitForGraph[k] = 0
 	}

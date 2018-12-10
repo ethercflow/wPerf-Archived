@@ -16,6 +16,8 @@ type Switch struct {
 	NextPid    int    `json:"next_pid,string"`
 	PrevState  uint64 `json:"prev_state,string"`
 	NextState  uint64 `json:"next_state,string"`
+	PrevComm   string `json:"prev_comm"`
+	NextComm   string `json:"next_comm"`
 	InWhichCtx int    `json:"in_which_ctx,string"`
 }
 

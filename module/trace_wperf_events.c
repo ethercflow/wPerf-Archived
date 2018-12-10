@@ -15,7 +15,7 @@ enum {
 
 enum {
     HARDIRQ = NR_SOFTIRQS + 1,
-    KERNEL
+    PROCESS
 };
 
 #define MAX_DISK_NUM      20
