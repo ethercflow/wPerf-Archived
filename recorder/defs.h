@@ -31,7 +31,7 @@ struct config {
     /*
      * filter
      */
-    const char *pid_list;
+    const char *filter_expr;
     const char *disk_list;
     const char *nic_list;
 

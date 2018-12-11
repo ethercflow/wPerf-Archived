@@ -218,7 +218,7 @@ void set_filter_and_enable(struct config *cf)
     char *plist;
     char *enable = "1";
 
-    plist = strdup(cf->pid_list);
+    plist = strdup(cf->filter_expr);
     iov = uv_buf_init(plist, strlen(plist) + 1);
     write_debugfs(&iov, get_instance_filter);
     free(plist);

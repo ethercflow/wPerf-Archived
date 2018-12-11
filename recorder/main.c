@@ -39,10 +39,10 @@ static void parse_opts(struct config *cf, int argc, char **argv)
 {
     int opt;
 
-    while (-1 != (opt = getopt(argc, argv, "p:P:hd:n:o:b:"))) {
+    while (-1 != (opt = getopt(argc, argv, "f:P:hd:n:o:b:"))) {
         switch (opt) {
-            case 'p':
-                cf->pid_list = optarg;
+            case 'f':
+                cf->filter_expr = optarg;
                 break;
             case 'P':
                 if (1 != sscanf(optarg, "%" PRIu64, &cf->timeout)) {
