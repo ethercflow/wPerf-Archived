@@ -1,13 +1,12 @@
 #include "defs.h"
 
-static void timer_expire(uv_timer_t *handle) {
-    struct recorder *recorder;
+static void cleanup(struct recorder *recorder)
+{
     struct ioworker *worker;
     int worker_count;
     char *nop = "0";
     uv_buf_t iov;
 
-    recorder = container_of(handle, struct recorder, expire_handler);
     recorder->expired = true;
 
     worker_count = recorder->worker_count;
@@ -21,6 +20,31 @@ static void timer_expire(uv_timer_t *handle) {
     write_debugfs(&iov, get_instance_filter);
 }
 
+static void sig_ignore(uv_signal_t* handle, int signum)
+{
+    (void)handle;
+    fprintf(stdout, "Ignore sig: %d\n", signum);
+}
+
+static void sig_cleanup(uv_signal_t* handle, int signum)
+{
+    struct recorder *recorder;
+
+    recorder = container_of(handle, struct recorder, sig_handler);
+    cleanup(recorder);
+    uv_timer_stop(&recorder->expire_handler);
+
+    fprintf(stdout, "Recv sig: %d, cleanup and exit\n", signum);
+}
+
+static void timer_expire(uv_timer_t *handle)
+{
+    struct recorder *recorder;
+
+    recorder = container_of(handle, struct recorder, expire_handler);
+    cleanup(recorder);
+}
+
 int recorder_run(struct config *cf, uv_loop_t *loop)
 {
     struct recorder recorder;
@@ -30,12 +54,23 @@ int recorder_run(struct config *cf, uv_loop_t *loop)
     recorder.cf = *cf;
     recorder.expired = false;
     recorder.worker_count = 0;
+    uv_signal_init(loop, &recorder.sig_handler);
+
+    uv_signal_start(&recorder.sig_handler, sig_ignore, SIGHUP);
+    uv_signal_start(&recorder.sig_handler, sig_ignore, SIGINT);
+    uv_signal_start(&recorder.sig_handler, sig_ignore, SIGTERM);
+    uv_signal_start(&recorder.sig_handler, sig_ignore, SIGQUIT);
 
     setup_event_instances(cf, basedir, &instances[0]);
     setup_ioworkers(cf, &recorder);
 
     set_instances_bufsize(cf);
     set_filter_and_enable(cf);
+
+    uv_signal_start(&recorder.sig_handler, sig_cleanup, SIGHUP);
+    uv_signal_start(&recorder.sig_handler, sig_cleanup, SIGINT);
+    uv_signal_start(&recorder.sig_handler, sig_cleanup, SIGTERM);
+    uv_signal_start(&recorder.sig_handler, sig_cleanup, SIGQUIT);
 
     err = record_events(&recorder);
     if (err)
@@ -48,5 +83,5 @@ int recorder_run(struct config *cf, uv_loop_t *loop)
     uv_timer_init(loop, &recorder.expire_handler);
     uv_timer_start(&recorder.expire_handler, timer_expire, cf->timeout, 0);
 
-    return uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+    return uv_run(loop, UV_RUN_DEFAULT);
 }
