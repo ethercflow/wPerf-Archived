@@ -56,11 +56,12 @@ def record_kworker(fname, kworker):
 def record_pids(fname, pid, ksoftirqd, kworker):
     l = []
 
-    l.extend(tidlist)
     l.extend(ksoftirqd)
     l.extend(kworker)
 
-    stdout, stderr = run_cmd(["ps -T -p %s | awk '{printf"%s,",$2}'" % pid], shell = True)
+    ps = "ps -T -p %s" % pid
+    cmd = ps + " | awk '{printf\"%s,\",$2}'"
+    stdout, stderr = run_cmd([cmd], shell = True)
     if stderr:
         logging.fatal("record_pids failed: %s" % stderr)
 
@@ -121,8 +122,8 @@ if __name__ == "__main__":
 
     cleanup(args.output)
 
+    record_events(filter, args.disklist, args.niclist, args.output, args.period)
     record_ksoftirqd(args.output + "ksoftirqd", ksoftirqd)
     record_kworker(args.output + "kworker", kworker)
     record_pids(args.output + "pidlist", pid, ksoftirqd, kworker)
     record_cpufreq(args.output + "cpufreq")
-    record_events(filter, args.disklist, args.niclist, args.output, args.period)
