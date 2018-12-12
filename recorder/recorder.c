@@ -43,6 +43,7 @@ static void timer_expire(uv_timer_t *handle)
 
     recorder = container_of(handle, struct recorder, expire_handler);
     cleanup(recorder);
+    uv_signal_stop(&recorder->sig_handler);
 }
 
 int recorder_run(struct config *cf, uv_loop_t *loop)
