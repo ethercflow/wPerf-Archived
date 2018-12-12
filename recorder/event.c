@@ -63,12 +63,11 @@ static void on_read(uv_fs_t *req)
     event = container_of(req, struct event_ctx, req);
 
     if (req->result <= 0) {
+        if (event->recorder->expired)
+            goto cleanup;
+
         if (req->result != UV_EAGAIN) {
             fprintf(stderr, "Read error: %s\n", uv_strerror(req->result));
-            goto cleanup;
-        }
-
-        if (event->recorder->expired) {
             goto cleanup;
         }
 
@@ -218,7 +217,7 @@ void set_filter_and_enable(struct config *cf)
     char *plist;
     char *enable = "1";
 
-    plist = strdup(cf->pid_list);
+    plist = strdup(cf->filter_expr);
     iov = uv_buf_init(plist, strlen(plist) + 1);
     write_debugfs(&iov, get_instance_filter);
     free(plist);

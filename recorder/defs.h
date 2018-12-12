@@ -31,7 +31,7 @@ struct config {
     /*
      * filter
      */
-    const char *pid_list;
+    const char *filter_expr;
     const char *disk_list;
     const char *nic_list;
 
@@ -69,6 +69,7 @@ struct ioworker {
 struct recorder {
     uv_loop_t *loop;
     struct config cf;
+    uv_signal_t sig_handler;
     uv_timer_t expire_handler;
     bool expired;
     struct event_ctx *events;

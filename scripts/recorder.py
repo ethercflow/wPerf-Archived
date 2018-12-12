@@ -25,25 +25,14 @@ def getKworkerList():
         exit(1)
     kworker = stdout.split("\n")
     return kworker[0:-1]
-    
 
-def buildRecordPidList(target):
-    ret = []
-    
-    if not target:
-        logging.fatal("no target pidlist")
-        exit(1)
-    
-    ret.extend(target.split(","))
+def buildFilter(tnamelist):
+    filter = "prev_comm ~ ksoftirqd* || prev_comm ~ kworker*"
 
-    return ret
+    tnlist = tnamelist.split(",")
+    for name in tnlist:
+        filter += " || prev_comm ~ %s" % name
 
-def buildFilter(pidlist):
-    filter = ""
-    for i in pidlist[:-1]:
-        filter += "common_pid == %s || " % i
-    filter += "common_pid == %s" % pidlist[-1]
-    filter += " || prev_comm ~ ksoftirqd* || prev_comm ~ kworker*"
     return filter
 
 def cleanup(output):
@@ -64,11 +53,21 @@ def record_ksoftirqd(fname, ksoftirqd):
 def record_kworker(fname, kworker):
     output(fname, kworker)
 
-def record_pids(fname, pidlist, ksoftirqd, kworker):
+def record_pids(fname, pid, ksoftirqd, kworker):
     l = []
-    l.extend(pidlist)
+
     l.extend(ksoftirqd)
     l.extend(kworker)
+
+    ps = "ps -T -p %s" % pid
+    cmd = ps + " | awk '{printf\"%s,\",$2}'"
+    stdout, stderr = run_cmd([cmd], shell = True)
+    if stderr:
+        logging.fatal("record_pids failed: %s" % stderr)
+
+    tidlist = stdout.split(",")
+    l.extend(tidlist[1:-1])
+
     output(fname, l)
 
 def record_cpufreq(fname):
@@ -79,7 +78,7 @@ def record_cpufreq(fname):
     output(fname, [stdout.strip("\n")])
 
 def record_events(filter, disklist, niclist, output, period):
-    cmd = ["./recorder", "-p", "%s" % filter ]
+    cmd = ["./recorder", "-f", "%s" % filter ]
     if args.disklist:
         cmd.append("-d")
         cmd.append(args.disklist)
@@ -98,8 +97,10 @@ def record_events(filter, disklist, niclist, output, period):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description = "WPerf events recorder script")
-    parser.add_argument("-p", "--pidlist", action = "store", default = None,
-                        help = "The target process's worker thread list, seprated by ','")
+    parser.add_argument("-p", "--pid", action = "store", default = None,
+                        help = "The target process main thread id")
+    parser.add_argument("-T", "--tnamelist", action = "store", default = None,
+                        help = "The target process's worker thread name list, seprated by ',', support *")
     parser.add_argument("-P", "--period", action = "store", default = "90000",
                         help = "The recorder run period.")
     parser.add_argument("-d", "--disklist", action = "store", default = None,
@@ -111,15 +112,18 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if not args.pid or not args.tnamelist:
+        logging.fatal("no target tidlist or tnamelist")
+        exit(1)
+
     ksoftirqd = getKsoftirqdList()
     kworker = getKworkerList()
-    pidlist = buildRecordPidList(args.pidlist)
-    filter = buildFilter(pidlist)
+    filter = buildFilter(args.tnamelist)
 
     cleanup(args.output)
 
     record_events(filter, args.disklist, args.niclist, args.output, args.period)
     record_ksoftirqd(args.output + "ksoftirqd", ksoftirqd)
     record_kworker(args.output + "kworker", kworker)
-    record_pids(args.output + "pidlist", pidlist, ksoftirqd, kworker)
+    record_pids(args.output + "pidlist", args.pid, ksoftirqd, kworker)
     record_cpufreq(args.output + "cpufreq")
