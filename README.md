@@ -21,14 +21,14 @@ cd wPerf
 ```
 ## Tracing
 
-Example: there's three worker threads tid1, tid2, tid3,
+Example: The target pid is 1234, which has three worker threads A,B,C,
 default the output dir is /tmp/wperf, record period is 90s.
 
 Run
 
 ``` shell
 cd bin
-sudo ./recorder.py -p tid1,tid2,tid3
+sudo ./recorder.py -T A,B,C -p 1234
 ./encorder.py -i /tmp/wperf/softirq/output -o softirq
 ./encorder.py -i /tmp/wperf/switch/output -o switch
 cp -a /tmp/wperf/cpufreq .
