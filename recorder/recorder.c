@@ -56,10 +56,7 @@ int recorder_run(struct config *cf, uv_loop_t *loop)
     recorder.worker_count = 0;
     uv_signal_init(loop, &recorder.sig_handler);
 
-    uv_signal_start(&recorder.sig_handler, sig_ignore, SIGHUP);
     uv_signal_start(&recorder.sig_handler, sig_ignore, SIGINT);
-    uv_signal_start(&recorder.sig_handler, sig_ignore, SIGTERM);
-    uv_signal_start(&recorder.sig_handler, sig_ignore, SIGQUIT);
 
     setup_event_instances(cf, basedir, &instances[0]);
     setup_ioworkers(cf, &recorder);
@@ -67,10 +64,7 @@ int recorder_run(struct config *cf, uv_loop_t *loop)
     set_instances_bufsize(cf);
     set_filter_and_enable(cf);
 
-    uv_signal_start(&recorder.sig_handler, sig_cleanup, SIGHUP);
     uv_signal_start(&recorder.sig_handler, sig_cleanup, SIGINT);
-    uv_signal_start(&recorder.sig_handler, sig_cleanup, SIGTERM);
-    uv_signal_start(&recorder.sig_handler, sig_cleanup, SIGQUIT);
 
     err = record_events(&recorder);
     if (err)

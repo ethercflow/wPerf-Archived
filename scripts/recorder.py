@@ -125,5 +125,5 @@ if __name__ == "__main__":
     record_events(filter, args.disklist, args.niclist, args.output, args.period)
     record_ksoftirqd(args.output + "ksoftirqd", ksoftirqd)
     record_kworker(args.output + "kworker", kworker)
-    record_pids(args.output + "pidlist", pid, ksoftirqd, kworker)
+    record_pids(args.output + "pidlist", args.pid, ksoftirqd, kworker)
     record_cpufreq(args.output + "cpufreq")
