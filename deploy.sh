@@ -7,7 +7,7 @@ fi
 mkdir bin
 
 make -C module
-if [ -n `lsmod | grep trace_wperf_events.ko` ]; then
+if [ "`lsmod | grep trace_wperf_events.ko`" != "\n" ]; then
   sudo rmmod trace_wperf_events.ko
 fi
 cd module && sudo insmod trace_wperf_events.ko
