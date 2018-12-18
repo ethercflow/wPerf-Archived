@@ -36,6 +36,16 @@ static inline void cleanup(struct event_ctx *event)
     uv_fs_close(event->loop, &event->req.close, event->fd[1], NULL);
 }
 
+static void on_retry(uv_timer_t *handle)
+{
+    struct event_ctx *event;
+
+    event = container_of(handle, struct event_ctx, retry_handler);
+
+    uv_fs_read(event->loop, &event->req.read, event->fd[0],
+               &event->iov, 1, -1, on_read);
+}
+
 static void on_write(uv_fs_t *req)
 {
     struct event_ctx *event;
@@ -71,8 +81,7 @@ static void on_read(uv_fs_t *req)
             goto cleanup;
         }
 
-        uv_fs_read(event->loop, &event->req.read, event->fd[0],
-                   &event->iov, 1, -1, on_read);
+        uv_timer_start(&event->retry_handler, on_retry, 1, 0);
         return;
     }
 
@@ -114,7 +123,7 @@ static int init_event_ctx(struct event_ctx *event, struct recorder *recorder)
     event->recorder = recorder;
     event->fd[0] = -1;
     event->fd[1] = -1;
-
+    uv_timer_init(event->loop, &event->retry_handler);
     event->iov = uv_buf_init(buf, len);
 
     return 0;

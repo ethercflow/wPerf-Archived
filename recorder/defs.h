@@ -51,6 +51,7 @@ struct event_ctx {
         uv_fs_t close;
     } req;
     uv_file fd[2];
+    uv_timer_t retry_handler;
     uv_buf_t iov;
 };
 
