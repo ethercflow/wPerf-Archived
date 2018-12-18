@@ -35,11 +35,17 @@ def buildFilter(tnamelist):
 
     return filter
 
-def cleanup(output):
+def reset(output):
     _, stderr = run_cmd(["rm", "-rf", "%s" % output])
     if stderr:
-        logging.fatal("cleanup failed: %s" % stderr)
+        logging.fatal("reset failed: %s" % stderr)
         exit(1)
+
+    _, stderr = run_cmd(["mkdir", "%s" % output])
+    if stderr:
+        logging.fatal("reset failed: %s" % stderr)
+        exit(1)
+
 
 def output(fname, pids):
     with open(fname, "w") as f:
@@ -120,10 +126,10 @@ if __name__ == "__main__":
     kworker = getKworkerList()
     filter = buildFilter(args.tnamelist)
 
-    cleanup(args.output)
+    reset(args.output)
 
-    record_events(filter, args.disklist, args.niclist, args.output, args.period)
     record_ksoftirqd(args.output + "ksoftirqd", ksoftirqd)
     record_kworker(args.output + "kworker", kworker)
     record_pids(args.output + "pidlist", args.pid, ksoftirqd, kworker)
     record_cpufreq(args.output + "cpufreq")
+    record_events(filter, args.disklist, args.niclist, args.output, args.period)
