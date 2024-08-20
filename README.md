@@ -1,5 +1,11 @@
 # wPerf: Generic Off-CPU Analysis to Identify Bottleneck Waiting Events
 
+## Notice
+
+**This repo has been deprecated and will be reimplemented using eBPF. New repo will be updated later.**
+
+## Intro
+
 wPerf is designed to identify bottlenecks caused by all kinds of waiting events.
 To identify waiting events that limit the application’s throughput, wPerf uses
 cascaded re-distribution to compute the local impact of a waiting event and uses
